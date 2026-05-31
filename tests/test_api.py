@@ -107,3 +107,40 @@ def test_interpret_requires_api_key(client):
     game_id = r.json()["id"]
     r2 = client.post("/ideas/interpret", json={"game_id": game_id, "text": "bone needles"})
     assert r2.status_code == 503
+
+
+def test_world_section_apis(client):
+    r = client.post("/games", json={"seed": 7})
+    game_id = r.json()["id"]
+    region_id = r.json()["regions"][0]["id"]
+
+    overview = client.get(f"/games/{game_id}/world/overview")
+    assert overview.status_code == 200
+    body = overview.json()
+    assert body["turn"] == 0
+    assert body["region"]["id"] == region_id
+    assert "warmth" in body["resources"]
+
+    absent = client.get(f"/games/{game_id}/world/materials/absent")
+    assert absent.status_code == 200
+    assert "wood" in {i["id"] for i in absent.json()["items"]}
+
+    available = client.get(f"/games/{game_id}/world/materials/available")
+    assert available.status_code == 200
+    avail = available.json()
+    assert len(avail["items"]) >= 3
+    assert any(i["id"] == "bone" for i in avail["items"])
+
+    stocks = client.get(f"/games/{game_id}/world/materials/stocks")
+    assert stocks.status_code == 200
+    assert "stocks" in stocks.json()
+
+    components = client.get(f"/games/{game_id}/world/components")
+    assert components.status_code == 200
+    comp_ids = {i["id"] for i in components.json()["items"]}
+    assert "natural_fire" in comp_ids
+    assert all("display" in i for i in components.json()["items"])
+
+    objects = client.get(f"/games/{game_id}/world/objects")
+    assert objects.status_code == 200
+    assert "items" in objects.json()

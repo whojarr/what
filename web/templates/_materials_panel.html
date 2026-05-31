@@ -1,50 +1,112 @@
-{# Requires: game (game state dict) #}
+{# Requires: game (game state dict)
+   Optional: compact, available_materials, gathered_stocks, preview_limit #}
 <section class="panel materials-panel">
   <h2>{% if heading %}{{ heading }}{% else %}What the cave offers{% endif %}</h2>
   {% for region in game.regions %}
-  {% if region.absent_materials %}
-  <h3>Not here</h3>
-  <ul class="entity-list">
-    {% for m in region.absent_materials %}
-    <li><span class="badge warn">{{ m | replace('_', ' ') | title }}</span></li>
-    {% endfor %}
-  </ul>
-  {% endif %}
+  <div class="materials-columns">
+    <div class="materials-col">
+      <h3>Not here</h3>
+      <ul class="entity-list">
+        {% if region.absent_materials %}
+        {% for m in region.absent_materials %}
+        <li><span class="badge warn">{{ m | replace('_', ' ') | title }}</span></li>
+        {% endfor %}
+        {% else %}
+        <li class="muted">Nothing ruled out yet.</li>
+        {% endif %}
+      </ul>
+    </div>
 
-  <h3>Available to use</h3>
-  <ul class="entity-list">
-    <li><strong>Bone</strong> <span class="badge">scavenging</span></li>
-    <li><strong>Hide</strong> <span class="badge">hunting</span></li>
-    <li><strong>Dried dung</strong> <span class="badge">fuel</span></li>
-    {% set discovered_deps = region.deposits | selectattr('discovered') | list %}
-    {% for d in discovered_deps %}
-    <li>
-      <strong>{{ d.material_id | replace('_', ' ') | title }}</strong>
-      <meter value="{{ d.abundance }}" max="1"></meter>
-      {{ "%.0f"|format(d.abundance * 100) }}%
-      <span class="muted">{{ d.description }}</span>
-    </li>
-    {% endfor %}
-  </ul>
+    {% if compact %}
+    {% set avail = available_materials %}
+    {% set avail_preview = avail[:preview_limit] %}
+    <a href="#materials-available" class="materials-col materials-col-link" data-world-panel="materials-available">
+      <h3>Available to use <span class="section-count">{{ avail | length }}</span></h3>
+      <ul class="entity-list">
+        {% for m in avail_preview %}
+        <li>
+          <strong>{{ m.name }}</strong>
+          {% if m.badge %}<span class="badge">{{ m.badge }}</span>{% endif %}
+          {% if m.source == 'deposit' %}
+          <meter value="{{ m.abundance }}" max="1"></meter>
+          {{ "%.0f"|format(m.abundance * 100) }}%
+          {% endif %}
+        </li>
+        {% else %}
+        <li class="muted">Nothing available yet.</li>
+        {% endfor %}
+      </ul>
+      {% if avail | length > preview_limit %}
+      <p class="section-more">View all {{ avail | length }} →</p>
+      {% elif avail | length > 0 %}
+      <p class="section-more">View details →</p>
+      {% endif %}
+    </a>
 
-  {% set hidden_surface = region.deposits | rejectattr('discovered') | selectattr('depth', 'equalto', 'surface') | list %}
-  {% set hidden_deep = region.deposits | rejectattr('discovered') | selectattr('depth', 'equalto', 'deep') | list %}
-  {% if hidden_surface or hidden_deep %}
-  <p class="muted">
-    {% if hidden_surface %}<span>Survey the cave to find more in the walls.</span>{% endif %}
-    {% if hidden_deep %}<span> Dig or invent mining tools to reach deeper deposits.</span>{% endif %}
-  </p>
-  {% endif %}
+    {% set stocks = gathered_stocks %}
+    {% set stocks_preview = stocks[:preview_limit] %}
+    <a href="#materials-stocks" class="materials-col materials-col-link" data-world-panel="materials-stocks">
+      <h3>Gathered stocks <span class="section-count">{{ stocks | length }}</span></h3>
+      <ul class="entity-list">
+        {% for s in stocks_preview %}
+        <li>{{ s.name }}: {{ "%.0f"|format(s.stock * 100) }}%</li>
+        {% else %}
+        <li class="muted">None gathered yet.</li>
+        {% endfor %}
+      </ul>
+      {% if stocks | length > preview_limit %}
+      <p class="section-more">View all {{ stocks | length }} →</p>
+      {% elif stocks | length > 0 %}
+      <p class="section-more">View details →</p>
+      {% endif %}
+    </a>
+    {% else %}
+    <div class="materials-col">
+      <h3>Available to use</h3>
+      <ul class="entity-list">
+        <li><strong>Bone</strong> <span class="badge">scavenging</span></li>
+        <li><strong>Hide</strong> <span class="badge">hunting</span></li>
+        <li><strong>Dried dung</strong> <span class="badge">fuel</span></li>
+        {% set discovered_deps = region.deposits | selectattr('discovered') | list %}
+        {% for d in discovered_deps %}
+        <li>
+          <strong>{{ d.material_id | replace('_', ' ') | title }}</strong>
+          <meter value="{{ d.abundance }}" max="1"></meter>
+          {{ "%.0f"|format(d.abundance * 100) }}%
+          <span class="muted">{{ d.description }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% set hidden_surface = region.deposits | rejectattr('discovered') | selectattr('depth', 'equalto', 'surface') | list %}
+      {% set hidden_deep = region.deposits | rejectattr('discovered') | selectattr('depth', 'equalto', 'deep') | list %}
+      {% if hidden_surface or hidden_deep %}
+      <p class="muted materials-hint">
+        {% if hidden_surface %}<span>Survey the cave to find more in the walls.</span>{% endif %}
+        {% if hidden_deep %}<span> Dig or invent mining tools to reach deeper deposits.</span>{% endif %}
+      </p>
+      {% endif %}
+    </div>
 
-  {% if game.material_stocks %}
-  <h3>Gathered stocks</h3>
-  <ul class="entity-list">
-    {% for mat_id, stock in game.material_stocks.items() %}
-    {% if stock > 0.01 %}
-    <li>{{ mat_id | replace('_', ' ') | title }}: {{ "%.0f"|format(stock * 100) }}%</li>
+    <div class="materials-col">
+      <h3>Gathered stocks</h3>
+      <ul class="entity-list">
+        {% if game.material_stocks %}
+        {% set has_stock = namespace(value=false) %}
+        {% for mat_id, stock in game.material_stocks.items() %}
+        {% if stock > 0.01 %}
+        {% set has_stock.value = true %}
+        <li>{{ mat_id | replace('_', ' ') | title }}: {{ "%.0f"|format(stock * 100) }}%</li>
+        {% endif %}
+        {% endfor %}
+        {% if not has_stock.value %}
+        <li class="muted">None gathered yet.</li>
+        {% endif %}
+        {% else %}
+        <li class="muted">None gathered yet.</li>
+        {% endif %}
+      </ul>
+    </div>
     {% endif %}
-    {% endfor %}
-  </ul>
-  {% endif %}
+  </div>
   {% endfor %}
 </section>

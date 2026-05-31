@@ -17,6 +17,19 @@ def api_client():
     return httpx.Client(base_url=API_BASE, timeout=60.0)
 
 
+def _load_game_or_redirect():
+    game_id = session.get("game_id")
+    if not game_id:
+        return None, redirect(url_for("home"))
+    with api_client() as client:
+        r = client.get(f"/games/{game_id}")
+        r.raise_for_status()
+        return r.json(), None
+
+
+PREVIEW_LIMIT = 3
+
+
 @app.route("/")
 def home():
     return render_template("home.html")
@@ -38,11 +51,12 @@ def world():
     game_id = session.get("game_id")
     if not game_id:
         return redirect(url_for("home"))
-    with api_client() as client:
-        r = client.get(f"/games/{game_id}")
-        r.raise_for_status()
-        game = r.json()
-    return render_template("world.html", game=game)
+    return render_template(
+        "world.html",
+        game_id=game_id,
+        api_base=API_BASE,
+        preview_limit=PREVIEW_LIMIT,
+    )
 
 
 @app.route("/world/rename", methods=["POST"])

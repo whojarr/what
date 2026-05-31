@@ -670,6 +670,162 @@ class GameService:
         self._save(state)
         return result
 
+    _BASELINE_MATERIALS = (
+        {"id": "bone", "name": "Bone", "badge": "scavenging", "source": "baseline"},
+        {"id": "hide", "name": "Hide", "badge": "hunting", "source": "baseline"},
+        {"id": "dried_dung", "name": "Dried dung", "badge": "fuel", "source": "baseline"},
+    )
+
+    def _world_region(self, state: GameState, region_id: str | None) -> Region | None:
+        if region_id:
+            return next((r for r in state.regions if r.id == region_id), None)
+        return state.regions[0] if state.regions else None
+
+    def get_world_overview(self, game_id: str, region_id: str | None = None) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        region = self._world_region(state, region_id)
+        if not region:
+            return None
+        return {
+            "game_id": state.id,
+            "turn": state.turn,
+            "era": state.era,
+            "path_divergence": state.path_divergence,
+            "invention_count": state.invention_count,
+            "resources": state.resources.model_dump(),
+            "region": {
+                "id": region.id,
+                "name": region.name,
+                "biome_tags": region.biome_tags,
+            },
+        }
+
+    def get_world_materials_absent(self, game_id: str, region_id: str | None = None) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        region = self._world_region(state, region_id)
+        if not region:
+            return None
+        return {
+            "region_id": region.id,
+            "items": [
+                {"id": m, "name": self.material_registry.name_for(m)}
+                for m in region.absent_materials
+            ],
+        }
+
+    def get_world_materials_available(
+        self, game_id: str, region_id: str | None = None
+    ) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        region = self._world_region(state, region_id)
+        if not region:
+            return None
+        items = [dict(item) for item in self._BASELINE_MATERIALS]
+        for deposit in region.deposits:
+            if not deposit.discovered:
+                continue
+            items.append(
+                {
+                    "id": deposit.material_id,
+                    "name": self.material_registry.name_for(deposit.material_id),
+                    "source": "deposit",
+                    "abundance": deposit.abundance,
+                    "depth": deposit.depth,
+                    "description": deposit.description,
+                }
+            )
+        hidden_surface = any(
+            d.depth == "surface" and not d.discovered for d in region.deposits
+        )
+        hidden_deep = any(d.depth == "deep" and not d.discovered for d in region.deposits)
+        hints: list[str] = []
+        if hidden_surface:
+            hints.append("Survey the cave to find more in the walls.")
+        if hidden_deep:
+            hints.append("Dig or invent mining tools to reach deeper deposits.")
+        return {
+            "region_id": region.id,
+            "items": items,
+            "undiscovered_hint": " ".join(hints),
+        }
+
+    def get_world_materials_stocks(
+        self, game_id: str, region_id: str | None = None
+    ) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        region = self._world_region(state, region_id)
+        if not region:
+            return None
+        stocks = [
+            {
+                "id": mat_id,
+                "name": self.material_registry.name_for(mat_id),
+                "stock": stock,
+            }
+            for mat_id, stock in sorted(state.material_stocks.items())
+            if stock > 0.01
+        ]
+        compounds = [
+            {"id": cid, "name": name}
+            for cid, name in sorted(state.novel_compounds.items())
+        ]
+        return {
+            "region_id": region.id,
+            "stocks": stocks,
+            "compounds": compounds,
+        }
+
+    def _world_entity_item(self, entity: Entity, state: GameState, display: dict) -> dict:
+        region_names = {r.id: r.name for r in state.regions}
+        return {
+            "id": entity.id,
+            "name": entity.name,
+            "type": entity.type,
+            "tags": entity.tags,
+            "health": entity.health,
+            "operational": entity.operational,
+            "region_id": entity.region_id,
+            "region_name": region_names.get(entity.region_id, entity.region_id),
+            "capabilities": entity.capabilities,
+            "display": display,
+        }
+
+    def get_world_components(self, game_id: str, region_id: str | None = None) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        region = self._world_region(state, region_id)
+        if not region:
+            return None
+        items = [
+            self._world_entity_item(e, state, component_display(e))
+            for e in state.entities
+            if is_component(e)
+        ]
+        return {"region_id": region.id, "items": items}
+
+    def get_world_objects(self, game_id: str, region_id: str | None = None) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        region = self._world_region(state, region_id)
+        if not region:
+            return None
+        items = [
+            self._world_entity_item(e, state, object_display(e))
+            for e in state.entities
+            if is_object(e)
+        ]
+        return {"region_id": region.id, "items": items}
+
     def get_events(self, game_id: str, limit: int = 20) -> list:
         state = self.load_game(game_id)
         if not state:

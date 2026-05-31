@@ -23,5 +23,6 @@
   </main>
   <div id="status-bar" class="status-bar" aria-live="polite"></div>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block page_scripts %}{% endblock %}
 </body>
 </html>

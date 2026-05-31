@@ -254,13 +254,288 @@ textarea, input, select {
 .lab-result .place-form label { margin: 0; }
 .lab-result .place-form input { margin: 0.35rem 0 0.75rem; }
 
+/* Cave page — multi-column layout */
+#world-feedback {
+  margin-bottom: 1rem;
+}
+#world-feedback:empty {
+  display: none;
+}
+#world-feedback .panel {
+  margin-bottom: 0;
+}
+.world-page-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+.world-page-grid .panel {
+  margin-bottom: 0;
+  padding: 1rem 1.15rem;
+}
+.world-page-grid .panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+.world-page-grid .panel h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+}
+.world-page-grid .panel > .muted,
+.world-page-grid .panel > .meta {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+.world-header-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+.world-name .meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+}
+.world-turn h2 {
+  margin-top: 0;
+}
+.world-page-grid .stats-grid {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.65rem;
+}
+.world-page-grid .stat {
+  font-size: 0.88rem;
+}
+.world-page-grid .materials-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.world-page-grid .materials-col .entity-list {
+  margin: 0;
+  padding: 0;
+}
+.world-page-grid .materials-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+}
+.world-entities-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+.world-entities-row .panel {
+  margin-bottom: 0;
+}
+.world-page-grid .entity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.world-page-grid .entity-grid li {
+  background: #243044;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+.world-page-grid .entity-list li {
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+.materials-col-link,
+.section-link-panel {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+.materials-col-link {
+  background: #243044;
+  padding: 0.75rem;
+  border-radius: 6px;
+}
+.materials-col-link:hover,
+.section-link-panel:hover {
+  background: #2a3850;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.section-link-panel h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.section-count {
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: var(--muted);
+  background: #243044;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+}
+.section-more {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: var(--accent);
+}
+.detail-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+.detail-card {
+  background: #243044;
+  padding: 0.85rem 1rem;
+  border-radius: 6px;
+}
+.detail-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+.detail-desc {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+}
+.detail-line {
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+}
+.detail-tags {
+  margin: 0.35rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.detail-footnote {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+}
+.world-side-panel-body .detail-list {
+  grid-template-columns: 1fr;
+}
+.world-side-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  visibility: hidden;
+}
+.world-side-panel.is-open {
+  pointer-events: auto;
+  visibility: visible;
+}
+.world-side-panel-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 18, 0.55);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.world-side-panel.is-open .world-side-panel-backdrop {
+  opacity: 1;
+}
+.world-side-panel-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 92vw);
+  background: var(--panel);
+  border-left: 1px solid #2a3548;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.world-side-panel.is-open .world-side-panel-drawer {
+  transform: translateX(0);
+}
+.world-side-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid #2a3548;
+  flex-shrink: 0;
+}
+.world-side-panel-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.world-side-panel-close {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.world-side-panel-close:hover {
+  color: var(--text);
+  background: #243044;
+}
+.world-side-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.15rem 1.5rem;
+}
+.world-side-panel-body h3 {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+.world-panel-loading {
+  margin: 0;
+}
+body.world-panel-open {
+  overflow: hidden;
+}
+.cap-list {
+  margin: 0.5rem 0 0;
+}
+.cap-list .cap-row {
+  grid-template-columns: 120px 1fr 44px;
+  font-size: 0.82rem;
+}
+.cap-list dt {
+  margin: 0;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.cap-list dd {
+  margin: 0;
+}
+
 @media (max-width: 1024px) {
+  .world-page-grid .materials-columns { grid-template-columns: 1fr 1fr; }
+  .world-page-grid .materials-col:last-child { grid-column: 1 / -1; }
   .lab-page-grid { grid-template-columns: 1fr; }
   .lab-result { position: static; }
   .lab-columns { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
   main.main-wide { padding: 1rem; }
+  .world-header-row { grid-template-columns: 1fr; }
+  .world-page-grid .materials-columns { grid-template-columns: 1fr; }
+  .world-page-grid .materials-col:last-child { grid-column: auto; }
+  .world-entities-row { grid-template-columns: 1fr; }
   .lab-columns { grid-template-columns: 1fr; }
   .lab-actions { flex-direction: column; align-items: stretch; }
   .lab-actions .primary { width: 100%; margin-bottom: 0; }

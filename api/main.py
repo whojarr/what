@@ -109,6 +109,54 @@ def get_game(game_id: str):
     return state.model_dump()
 
 
+@app.get("/games/{game_id}/world/overview")
+def world_overview(game_id: str, region_id: str | None = None):
+    result = game_service.get_world_overview(game_id, region_id)
+    if not result:
+        raise HTTPException(404, "Game or region not found")
+    return result
+
+
+@app.get("/games/{game_id}/world/materials/absent")
+def world_materials_absent(game_id: str, region_id: str | None = None):
+    result = game_service.get_world_materials_absent(game_id, region_id)
+    if not result:
+        raise HTTPException(404, "Game or region not found")
+    return result
+
+
+@app.get("/games/{game_id}/world/materials/available")
+def world_materials_available(game_id: str, region_id: str | None = None):
+    result = game_service.get_world_materials_available(game_id, region_id)
+    if not result:
+        raise HTTPException(404, "Game or region not found")
+    return result
+
+
+@app.get("/games/{game_id}/world/materials/stocks")
+def world_materials_stocks(game_id: str, region_id: str | None = None):
+    result = game_service.get_world_materials_stocks(game_id, region_id)
+    if not result:
+        raise HTTPException(404, "Game or region not found")
+    return result
+
+
+@app.get("/games/{game_id}/world/components")
+def world_components(game_id: str, region_id: str | None = None):
+    result = game_service.get_world_components(game_id, region_id)
+    if not result:
+        raise HTTPException(404, "Game or region not found")
+    return result
+
+
+@app.get("/games/{game_id}/world/objects")
+def world_objects(game_id: str, region_id: str | None = None):
+    result = game_service.get_world_objects(game_id, region_id)
+    if not result:
+        raise HTTPException(404, "Game or region not found")
+    return result
+
+
 @app.post("/games/{game_id}/regions/{region_id}/name")
 def rename_region(game_id: str, region_id: str, req: RenameRegionRequest):
     state = game_service.rename_region(game_id, region_id, req.name)
