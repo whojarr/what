@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% from "_component_display.html" import component_label, component_hint, component_badge %}
+{% from "_object_display.html" import object_label, object_hint, object_badge %}
+{% block title %}Discover — WHAT{% endblock %}
+{% block main_class %}main-wide{% endblock %}
+{% block content %}
+<div class="lab-page-grid">
+  <div class="lab-main">
+    <section class="panel lab-header">
+      <h2>Discovery bench</h2>
+      <p class="muted lab-lede">Combine materials, machines, and objects — fuse two methods, or try something new: the bench judges whether your experiment could work even if it is not an exact known recipe.</p>
+    </section>
+
+    <section class="panel lab-workspace">
+      <form method="post" class="lab-form">
+        <input type="hidden" name="region_id" value="{{ options.region_id }}">
+
+        {% if options.methods %}
+        <div class="lab-methods">
+          <h3 class="lab-section-title">Methods</h3>
+          <p class="muted lab-methods-hint">Select one or two processes — pick exactly two alone to fuse into a new method, or use with materials and machines.</p>
+          <div class="method-bar">
+            {% for m in options.methods %}
+            {% if m.known %}
+            <label class="method-pill method-known method-pick"
+                   title="{{ m.description }}">
+              <input type="checkbox" name="method_ids" value="{{ m.id }}"
+                {% if m.id in selected_methods %}checked{% endif %}>
+              {{ m.name }}
+            </label>
+            {% else %}
+            <span class="method-pill method-unknown"
+                  title="{{ m.hint }}">
+              {{ m.name }} · ?
+            </span>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="lab-columns">
+          <div class="lab-column">
+            <h3>Materials</h3>
+            <p class="muted">Flint, bone, hide, ore.</p>
+            <div class="pick-grid pick-grid-stack">
+              {% for m in options.materials %}
+              <label class="pick-item">
+                <input type="checkbox" name="material_ids" value="{{ m.id }}"
+                  {% if m.id in selected_materials %}checked{% endif %}>
+                <span>{{ m.name }}</span>
+                {% if m.stock > 0.01 %}
+                <span class="muted pick-meta">stock {{ "%.0f"|format(m.stock * 100) }}%</span>
+                {% elif m.source == 'scavenging' %}
+                <span class="muted pick-meta">nearby</span>
+                {% elif m.source == 'discovered' %}
+                <span class="muted pick-meta">discovered</span>
+                {% elif m.abundance is defined %}
+                <span class="muted pick-meta">{{ "%.0f"|format(m.abundance * 100) }}%</span>
+                {% endif %}
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="lab-column">
+            <h3>Components</h3>
+            <p class="muted">Machines — fire, water, tools.</p>
+            <div class="pick-grid pick-grid-stack">
+              {% for c in options.components %}
+              <label class="pick-item pick-item-tall">
+                <input type="checkbox" name="component_ids" value="{{ c.id }}"
+                  {% if c.id in selected_components %}checked{% endif %}>
+                <div class="pick-item-body">
+                  <div>{{ component_badge(c) }} <strong>{{ component_label(c) }}</strong></div>
+                  <span class="muted pick-hint">{{ component_hint(c) }}</span>
+                </div>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="lab-column">
+            <h3>Objects</h3>
+            <p class="muted">Furniture, structures, processed stuff.</p>
+            <div class="pick-grid pick-grid-stack">
+              {% for o in options.objects %}
+              <label class="pick-item pick-item-tall">
+                <input type="checkbox" name="object_ids" value="{{ o.id }}"
+                  {% if o.id in selected_objects %}checked{% endif %}>
+                <div class="pick-item-body">
+                  <div>{{ object_badge(o) }} <strong>{{ object_label(o) }}</strong></div>
+                  <span class="muted pick-hint">{{ object_hint(o) }}</span>
+                </div>
+              </label>
+              {% endfor %}
+              {% if not options.objects %}
+              <p class="muted lab-empty">None yet — build from materials.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="lab-actions">
+          <label class="lab-intent">What are you trying?
+            <input type="text" name="intent" autocomplete="off"
+                   placeholder="e.g. stitch a raincoat"
+                   value="{{ intent or '' }}">
+          </label>
+          <button type="submit" class="primary">Try combination</button>
+        </div>
+      </form>
+      {% if error %}
+      <p class="error lab-error feedback-recent">{{ error }}</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {% if result %}
+  <aside class="panel lab-result feedback-recent">
+    <h3>What happened</h3>
+    {% for f in result.feedback %}
+    <p class="{% if loop.first and result.recipe_match %}warn{% else %}muted{% endif %} result-line">{{ f }}</p>
+    {% endfor %}
+    {% if result.ai_suggested %}
+    <p class="muted result-line">Experimental combination — not a known recipe.</p>
+    {% endif %}
+
+    {% if result.proposal %}
+    <h3 class="result-name">{{ result.proposal.player_name }}</h3>
+    <p class="muted">
+      {% if result.result_kind == 'object' %}Object{% else %}Component{% endif %}
+      — {{ result.proposal.reasoning }}
+    </p>
+
+    {% set status = result.constraint.status %}
+    {% if status != 'BLOCKED' %}
+    <form action="{{ url_for('place') }}" method="post" class="place-form">
+      <input type="hidden" name="type" value="{{ result.normalized.type }}">
+      <input type="hidden" name="tags" value="{{ result.normalized.tags | join(',') }}">
+      <input type="hidden" name="capabilities_json" value="{{ result.normalized.capabilities | tojson }}">
+      <input type="hidden" name="region_id" value="{{ options.region_id }}">
+      <label>{% if result.result_kind == 'object' %}Name{% else %}Name{% endif %}
+        <input type="text" name="invention_name" autocomplete="off"
+               value="{{ result.proposal.player_name }}">
+      </label>
+      <button type="submit" class="primary">
+        {% if result.result_kind == 'object' %}Keep object{% else %}Keep component{% endif %}
+      </button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}

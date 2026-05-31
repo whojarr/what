@@ -1,0 +1,55 @@
+methods:
+  heating:
+    name: Heating
+    description: Apply fire to roast, dry, harden, or smelt materials.
+    output_tags: [heat, roast, cook, dry, smelt, fuel, fire, harden]
+    starter: true
+    hint: You already have fire — heating is at hand.
+
+  soaking:
+    name: Soaking
+    description: Soften or wash materials in water.
+    output_tags: [soften, soak, wash, water]
+    starter: true
+    hint: The spring gives you soaking.
+
+  sewing:
+    name: Sewing
+    description: Join hide and fiber with needle and sinew.
+    output_tags: [sew, stitch, garment, cloth, raincoat, leather]
+    unlock_entity_types: [tool.bone_needle]
+    hint: Make a bone needle from hide and bone, or invent sewing on the Invent page.
+
+  knapping:
+    name: Knapping
+    description: Strike stone to flake sharp edges.
+    output_tags: [flint, knap, sharp, blade, knapped]
+    unlock_entity_types: [tool.flint_knapped]
+    hint: Hammer flint with bone near fire, or invent knapping.
+
+  smelting:
+    name: Smelting
+    description: Roast ore with intense heat to free metal.
+    output_tags: [smelt, metal, ore, iron, cast]
+    unlock_recipe_types: [material.roasted_ore]
+    hint: Roast iron ore near fire, or invent smelting.
+
+  chemical_mixing:
+    name: Chemical combination
+    description: Grind minerals together to change color or properties.
+    output_tags: [pigment, chemical, sulfur, manganese, dye, mix]
+    unlock_recipe_types: [material.cave_pigment]
+    hint: Combine sulfur and manganese crystals, or invent chemical mixing.
+
+method_fusions:
+  - methods: [heating, soaking]
+    unlocks: sewing
+    feedback: "Hide softens in water and tightens by fire — joining pieces with sinew follows. You learn sewing."
+
+  - methods: [heating, knapping]
+    unlocks: smelting
+    feedback: "Stone flakes by firelight — ore might release metal the same way. You learn smelting."
+
+  - methods: [heating, chemical_mixing]
+    unlocks: smelting
+    feedback: "Heat transforms ground minerals — roasted ore could yield metal too. You learn smelting."

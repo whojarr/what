@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}WHAT{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1><a href="{{ url_for('home') }}">WHAT</a></h1>
+    <nav>
+      {% if session.get('game_id') %}
+      <a href="{{ url_for('world') }}">Cave</a>
+      <a href="{{ url_for('lab') }}">Discover</a>
+      <a href="{{ url_for('invent') }}">Invent</a>
+      <a href="{{ url_for('history') }}">History</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="{% block main_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  <div id="status-bar" class="status-bar" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

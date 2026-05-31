@@ -1,0 +1,19 @@
+{% macro object_label(entity) -%}
+  {{ entity.label or entity.name }}
+{%- endmacro %}
+
+{% macro object_hint(entity) -%}
+  {{ entity.hint or 'Built from cave materials — inanimate' }}
+{%- endmacro %}
+
+{% macro object_badge(entity) -%}
+  {% if entity.role == 'furniture' %}
+    <span class="badge">furniture</span>
+  {% elif entity.role == 'dwelling' %}
+    <span class="badge">dwelling</span>
+  {% elif entity.role == 'material' %}
+    <span class="badge">processed</span>
+  {% else %}
+    <span class="badge">object</span>
+  {% endif %}
+{%- endmacro %}

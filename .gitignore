@@ -1,0 +1,52 @@
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Local game saves (player progress; not for the repo)
+data/saves/
+
+# Node / Serverless deploy artifacts
+node_modules/
+.yarn/cache
+.yarn/install-state.gz
+.pnp.*
+.serverless/
+requirements-export.txt
+
+# AWS / keys (if ever created locally)
+.aws/
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+credentials
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cursor local state
+.cursor/

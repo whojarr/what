@@ -1,0 +1,110 @@
+service: civsim
+
+frameworkVersion: "3"
+
+plugins:
+  - serverless-python-requirements
+  - serverless-wsgi
+
+provider:
+  name: aws
+  runtime: python3.12
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  timeout: 29
+  memorySize: 1024
+  architecture: x86_64
+  environment:
+    SAVES_PATH: /tmp/civsim/saves
+    CAPABILITIES_PATH: data/capabilities.yaml
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY, ''}
+    OPENAI_MODEL: ${env:OPENAI_MODEL, 'gpt-4o-mini'}
+    FLASK_SECRET_KEY: ${env:FLASK_SECRET_KEY, 'change-me-in-production'}
+    AUTO_APPROVE_CAPABILITIES: ${env:AUTO_APPROVE_CAPABILITIES, 'false'}
+    PYTHONPATH: /var/task/src:/var/task
+    CORS_ORIGINS: "*"
+  httpApi:
+    cors:
+      allowedOrigins:
+        - "*"
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+        - X-Amz-Date
+        - X-Api-Key
+        - X-Amz-Security-Token
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      allowCredentials: true
+
+custom:
+  pythonRequirements:
+    usePoetry: true
+    dockerizePip: non-linux
+    slim: true
+    strip: false
+    noDeploy:
+      - uvicorn
+      - uvloop
+      - httptools
+      - watchfiles
+      - websockets
+    pythonBin: python3
+  wsgi:
+    app: web.app.app
+    packRequirements: false
+    pythonBin: python3
+    pythonExec: python3
+
+package:
+  individually: false
+  patterns:
+    - "!.venv/**"
+    - "!.git/**"
+    - "!node_modules/**"
+    - "!.serverless/**"
+    - "!tests/**"
+    - "!.pytest_cache/**"
+    - "!**/*.pyc"
+    - "!data/saves/**"
+    - "src/**"
+    - "api/**"
+    - "web/**"
+    - "data/capabilities.yaml"
+
+functions:
+  api:
+    handler: api.handler.handler
+    description: FastAPI game API (Mangum)
+    events:
+      - httpApi:
+          method: ANY
+          path: /api
+      - httpApi:
+          method: ANY
+          path: /api/{proxy+}
+
+  web:
+    handler: wsgi_handler.handler
+    description: Flask server-rendered UI
+    environment:
+      FASTAPI_BASE_URL:
+        Fn::Join:
+          - ""
+          - - "https://"
+            - Ref: HttpApi
+            - ".execute-api."
+            - Ref: AWS::Region
+            - ".amazonaws.com/api"
+    events:
+      - httpApi:
+          method: ANY
+          path: /
+      - httpApi:
+          method: ANY
+          path: /{proxy+}

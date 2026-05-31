@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_component_display.html" import component_label, component_hint, component_badge %}
+{% from "_object_display.html" import object_label, object_hint, object_badge %}
+{% block title %}Cave — WHAT{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Turn {{ game.turn }} · {{ game.era | capitalize }}</h2>
+  <p class="meta">Path divergence: {{ "%.0f"|format((game.path_divergence or 0) * 100) }}% · Inventions: {{ game.invention_count }}</p>
+  <div class="stats-grid">
+    <div class="stat"><span>Warmth</span><meter value="{{ game.resources.warmth }}" max="1"></meter> {{ "%.0f"|format(game.resources.warmth * 100) }}%</div>
+    <div class="stat"><span>Water</span><meter value="{{ game.resources.water }}" max="1"></meter> {{ "%.0f"|format(game.resources.water * 100) }}%</div>
+    <div class="stat"><span>Food</span><meter value="{{ game.resources.food }}" max="1"></meter> {{ "%.0f"|format(game.resources.food * 100) }}%</div>
+    <div class="stat"><span>Materials</span><meter value="{{ game.resources.materials }}" max="1"></meter> {{ "%.0f"|format(game.resources.materials * 100) }}%</div>
+    <div class="stat"><span>Knowledge</span><meter value="{{ game.resources.knowledge }}" max="1"></meter> {{ "%.0f"|format(game.resources.knowledge * 100) }}%</div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>The cave</h2>
+  {% for region in game.regions %}
+  <div class="region-card">
+    <form action="{{ url_for('rename_region') }}" method="post" class="rename-form">
+      <input type="hidden" name="region_id" value="{{ region.id }}">
+      <input type="text" name="name" value="{{ region.name }}" class="name-input">
+      <button type="submit" class="small">Rename</button>
+    </form>
+    <p class="meta">{{ region.biome_tags | join(', ') }}</p>
+  </div>
+  {% endfor %}
+</section>
+
+{% include "_materials_panel.html" %}
+
+<section class="panel">
+  <h2>Components</h2>
+  <p class="muted">Machines — fire, water, tools. Used at <a href="{{ url_for('lab') }}">Discover</a>.</p>
+  <ul class="entity-list">
+    {% for e in game.entities %}
+    {% if 'object' not in e.tags and ('component' in e.tags or e.id in ['natural_fire', 'natural_spring'] or 'natural' not in e.tags) %}
+    {% set comp = {'id': e.id, 'name': e.name, 'tags': e.tags, 'kind': 'starter' if 'natural' in e.tags else 'built', 'role': 'fire' if 'fire' in e.tags else ('water' if 'water' in e.tags else 'machine'), 'label': e.name} %}
+    <li>
+      {{ component_badge(comp) }}
+      <strong>{{ component_label(comp) }}</strong>
+      <span class="health">health {{ "%.0f"|format(e.health * 100) }}%</span>
+      {% if not e.operational %}<span class="badge warn">offline</span>{% endif %}
+    </li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Objects</h2>
+  <p class="muted">Inanimate things — furniture, shelters, houses. They don't run; they just exist. Combine at Discover.</p>
+  <ul class="entity-list">
+    {% for e in game.entities if 'object' in e.tags %}
+    {% set obj = {'name': e.name, 'label': e.name, 'role': 'furniture' if 'furniture' in e.tags or 'table' in e.tags or 'chair' in e.tags else ('dwelling' if 'house' in e.tags or 'dwelling' in e.tags else 'structure')} %}
+    <li>
+      {{ object_badge(obj) }}
+      <strong>{{ object_label(obj) }}</strong>
+      <span class="health">health {{ "%.0f"|format(e.health * 100) }}%</span>
+      {% if not e.operational %}<span class="badge warn">broken</span>{% endif %}
+    </li>
+    {% else %}
+    <li class="muted">None yet — combine materials into seats, tables, or shelters.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<div class="actions">
+  <a href="{{ url_for('invent') }}" class="button primary">Invent something</a>
+  <a href="{{ url_for('lab') }}" class="button">Discover</a>
+  <form action="{{ url_for('survey') }}" method="post" style="display:inline">
+    <input type="hidden" name="region_id" value="{{ game.regions[0].id }}">
+    <button type="submit" class="button">Survey the cave</button>
+  </form>
+  <form action="{{ url_for('tick') }}" method="post" style="display:inline">
+    <button type="submit" class="button">Advance turn</button>
+  </form>
+</div>
+{% endblock %}

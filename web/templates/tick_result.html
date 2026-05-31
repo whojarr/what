@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Turn {{ result.turn }} — WHAT{% endblock %}
+{% block content %}
+<section class="panel feedback-recent">
+  <h2>Turn {{ result.turn }} complete</h2>
+
+  <h3>Resource changes</h3>
+  <ul>
+    {% for k, v in result.resource_deltas.items() %}
+    <li>{{ k }}: {% if v >= 0 %}+{% endif %}{{ "%.3f"|format(v) }}</li>
+    {% endfor %}
+  </ul>
+
+  <h3>Climate changes</h3>
+  <ul>
+    {% for k, v in result.climate_deltas.items() %}
+    <li>{{ k }}: {% if v >= 0 %}+{% endif %}{{ "%.3f"|format(v) }}</li>
+    {% endfor %}
+  </ul>
+
+  <h3>Feedback</h3>
+  <ul class="feedback">
+    {% for f in result.feedback %}
+    <li>{{ f }}</li>
+    {% endfor %}
+  </ul>
+
+  {% if result.events %}
+  <h3>Events</h3>
+  {% for e in result.events %}
+  <div class="event-card">
+    <strong>{{ e.type }}</strong> severity {{ "%.2f"|format(e.severity) }}
+    {% if e.region_name or e.region_id %} in {{ e.region_name or e.region_id }}{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if result.impacts %}
+  <h3>Impacts</h3>
+  <ul>
+    {% for i in result.impacts %}
+    <li><strong>{{ i.entity_name or i.entity_id }}</strong>: damage {{ "%.2f"|format(i.damage) }}, health {{ "%.0f"|format(i.health_after * 100) }}%{% if not i.operational %} <span class="badge warn">offline</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <a href="{{ url_for('world') }}" class="button primary">Continue</a>
+</section>
+{% endblock %}

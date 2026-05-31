@@ -1,0 +1,20 @@
+{
+  "name": "civsim-serverless",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "deploy": "serverless deploy",
+    "deploy:dev": "serverless deploy --stage dev",
+    "deploy:prod": "serverless deploy --stage prod",
+    "remove": "serverless remove",
+    "info": "serverless info",
+    "logs:api": "serverless logs -f api -t",
+    "logs:web": "serverless logs -f web -t",
+    "package": "serverless package"
+  },
+  "devDependencies": {
+    "serverless": "^3.39.0",
+    "serverless-python-requirements": "^6.1.0",
+    "serverless-wsgi": "^3.0.4"
+  }
+}

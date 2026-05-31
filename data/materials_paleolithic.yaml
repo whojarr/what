@@ -1,0 +1,48 @@
+materials:
+  wood:
+    name: Wood
+    tags: [wood, timber, charcoal, fuel]
+    substitutes: [bone, dung]
+  plant_fiber:
+    name: Plant fiber
+    tags: [fiber, plant, rope, twine]
+    substitutes: [hide]
+  clay:
+    name: Clay
+    tags: [clay, pottery]
+    substitutes: [limestone]
+  flint:
+    name: Flint
+    tags: [flint, sharp, blade]
+    substitutes: []
+  limestone:
+    name: Limestone
+    tags: [limestone, stone]
+    substitutes: [flint]
+  iron_oxide:
+    name: Iron ore (wall streaks)
+    tags: [metal, iron, ore]
+    substitutes: []
+  sulfur:
+    name: Sulfur crystals
+    tags: [chemical, sulfur, pigment]
+    substitutes: []
+  manganese:
+    name: Manganese
+    tags: [manganese, pigment]
+    substitutes: [sulfur]
+  bone:
+    name: Bone
+    tags: [bone]
+    substitutes: []
+    implicit: true
+  hide:
+    name: Hide
+    tags: [hide, leather]
+    substitutes: []
+    implicit: true
+  dung:
+    name: Dried dung
+    tags: [dung]
+    substitutes: []
+    implicit: true

@@ -1,0 +1,154 @@
+recipes:
+  - materials: [flint, bone]
+    near: natural_fire
+    method: heating
+    unlocks_method: knapping
+    player_name: Knapped flint
+    type: tool.flint_knapped
+    tags: [flint, sharp, bone, fire]
+    capabilities:
+      tool_craft: 0.65
+      hunting: 0.35
+    feedback: "Bone hammers flint near the embers — a sharp edge flakes off."
+
+  - materials: [flint, limestone]
+    player_name: Grinding stone
+    type: tool.grinder
+    tags: [flint, limestone, stone]
+    capabilities:
+      tool_craft: 0.5
+      food_output: 0.2
+    feedback: "Limestone grit wears the flint into a crude grinding surface."
+
+  - materials: [hide, bone]
+    unlocks_method: sewing
+    player_name: Bone needle and sinew
+    type: tool.bone_needle
+    tags: [bone, hide]
+    capabilities:
+      tool_craft: 0.55
+      shelter: 0.25
+    feedback: "A splinter of bone pierces hide — something to stitch with. You learn sewing."
+
+  - materials: [iron_oxide]
+    near: natural_fire
+    method: heating
+    unlocks_method: smelting
+    player_name: Roasted ore
+    type: material.roasted_ore
+    tags: [metal, iron, ore, fire]
+    capabilities:
+      tool_craft: 0.4
+      uncertainty: 0.5
+    feedback: "Red ore blackens in the embers — metal lurks inside, maybe."
+
+  - materials: [hide]
+    near: natural_spring
+    method: soaking
+    kind: object
+    player_name: Softened hide
+    type: object.soft_hide
+    tags: [object, hide, water]
+    capabilities:
+      shelter: 0.4
+    feedback: "Hide slackens in spring water — pliable, inanimate, ready to shape."
+
+  - materials: [flint]
+    near: natural_spring
+    method: soaking
+    player_name: Washed flint
+    type: tool.flint_clean
+    tags: [flint, stone, water]
+    capabilities:
+      tool_craft: 0.45
+      hunting: 0.2
+    feedback: "Spring water washes grit from flint — a cleaner edge to work."
+
+  - materials: [limestone, hide]
+    kind: object
+    player_name: Stone seat
+    type: object.seat
+    tags: [object, furniture, stone, chair]
+    capabilities:
+      shelter: 0.15
+      social_cohesion: 0.15
+    feedback: "Flat stones stacked — something to sit on."
+
+  - materials: [limestone, hide, bone]
+    kind: object
+    player_name: Stone table
+    type: object.table
+    tags: [object, furniture, stone, table]
+    capabilities:
+      shelter: 0.1
+      social_cohesion: 0.25
+      storage: 0.2
+    feedback: "A flat slab on stacked stone — a surface to work and eat on."
+
+  - materials: [limestone, hide]
+    kind: object
+    player_name: Lean-to shelter
+    type: object.shelter
+    tags: [object, structure, shelter]
+    capabilities:
+      shelter: 0.45
+      social_cohesion: 0.15
+    feedback: "Hide stretched over stones — crude cover from the cold."
+
+  - materials: [limestone, hide, bone, flint]
+    kind: object
+    player_name: Cave dwelling
+    type: object.house
+    tags: [object, structure, house, shelter, dwelling]
+    capabilities:
+      shelter: 0.75
+      social_cohesion: 0.3
+      storage: 0.15
+    feedback: "Walls of stone and stretched hide — the cave has a home inside it."
+
+  - object_count: 2
+    object_tags: [furniture]
+    kind: object
+    player_name: Furnished corner
+    type: object.furnished_corner
+    tags: [object, furniture, structure]
+    capabilities:
+      social_cohesion: 0.35
+      shelter: 0.2
+    feedback: "Seat and table set together — a corner that feels meant for people."
+
+  - materials: [hide]
+    object_count: 1
+    object_tags: [hide]
+    component_count: 1
+    component_tags: [bone]
+    method: sewing
+    kind: object
+    player_name: Hide raincoat
+    type: object.raincoat
+    tags: [object, hide, garment, shelter]
+    capabilities:
+      shelter: 0.55
+    feedback: "Sinew from hide, bone needle through softened hide — rain slides off your shoulders."
+
+  - materials: [sulfur, manganese]
+    unlocks_method: chemical_mixing
+    kind: object
+    player_name: Cave pigment
+    type: material.cave_pigment
+    tags: [object, pigment, chemical]
+    capabilities:
+      tool_craft: 0.2
+      innovation_rate: 0.15
+    feedback: "Yellow and dark dust ground together — color for the walls. You learn chemical combination."
+
+  - materials: [dung, bone]
+    near: natural_fire
+    method: heating
+    player_name: Smoky fuel cake
+    type: fuel.dung_cake
+    tags: [dung, fire, fuel]
+    capabilities:
+      warmth_output: 0.45
+      tool_craft: 0.1
+    feedback: "Dried dung and bone char smolder — foul, but they burn."

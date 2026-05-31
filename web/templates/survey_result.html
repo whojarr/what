@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Survey — WHAT{% endblock %}
+{% block content %}
+<section class="panel feedback-recent">
+  <h2>Cave survey — Turn {{ result.turn }}</h2>
+
+  {% if result.discoveries %}
+  <h3>New discoveries</h3>
+  <ul class="entity-list">
+    {% for d in result.discoveries %}
+    <li>
+      <strong>{{ d.name }}</strong>
+      <span class="muted">{{ d.description }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h3>What you learned</h3>
+  <ul class="feedback">
+    {% for f in result.feedback %}
+    <li>{{ f }}</li>
+    {% endfor %}
+  </ul>
+
+  <a href="{{ url_for('world') }}" class="button primary">Continue</a>
+</section>
+{% endblock %}

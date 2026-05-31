@@ -1,0 +1,107 @@
+cooling:
+  category: thermal
+  range: [0, 1]
+  default: 0.0
+  meaning: Heat dissipation capacity
+
+storm_resistance:
+  category: resilience
+  range: [0, 1]
+  default: 0.3
+  meaning: Resistance to storm damage
+
+flood_resistance:
+  category: resilience
+  range: [0, 1]
+  default: 0.3
+  meaning: Resistance to flood damage
+
+heat_resistance:
+  category: resilience
+  range: [0, 1]
+  default: 0.3
+  meaning: Resistance to heatwave damage
+
+energy_efficiency:
+  category: efficiency
+  range: [0, 1]
+  default: 0.5
+  meaning: Energy use efficiency
+
+water_dependency:
+  category: resource
+  range: [0, 1]
+  default: 0.0
+  meaning: Reliance on water supply
+
+maintenance_complexity:
+  category: operations
+  range: [0, 1]
+  default: 0.5
+  meaning: Maintenance burden (higher = more costly)
+
+compute_output:
+  category: compute
+  range: [0, 1]
+  default: 0.0
+  meaning: Compute capacity provided
+
+compute_demand:
+  category: compute
+  range: [0, 1]
+  default: 0.0
+  meaning: Compute capacity consumed
+
+energy_output:
+  category: energy
+  range: [0, 1]
+  default: 0.0
+  meaning: Energy generation
+
+energy_demand:
+  category: energy
+  range: [0, 1]
+  default: 0.0
+  meaning: Energy consumption
+
+material_efficiency:
+  category: efficiency
+  range: [0, 1]
+  default: 0.5
+  meaning: Material use efficiency
+
+ecosystem_impact:
+  category: environment
+  range: [0, 1]
+  default: 0.0
+  meaning: Negative ecosystem pressure (higher = worse)
+
+scaling_stability:
+  category: operations
+  range: [0, 1]
+  default: 0.6
+  meaning: Stability as system scales
+
+supply_chain_resilience:
+  category: resilience
+  range: [0, 1]
+  default: 0.4
+  meaning: Resistance to supply disruptions
+
+innovation_rate:
+  category: social
+  range: [0, 1]
+  default: 0.0
+  meaning: Rate of new solution discovery
+
+social_acceptance:
+  category: social
+  range: [0, 1]
+  default: 0.5
+  meaning: Public acceptance of the system
+
+uncertainty:
+  category: meta
+  range: [0, 1]
+  default: 0.0
+  meaning: Theoretical/unproven concepts (higher = less predictable)

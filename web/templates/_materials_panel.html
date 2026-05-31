@@ -1,0 +1,50 @@
+{# Requires: game (game state dict) #}
+<section class="panel materials-panel">
+  <h2>{% if heading %}{{ heading }}{% else %}What the cave offers{% endif %}</h2>
+  {% for region in game.regions %}
+  {% if region.absent_materials %}
+  <h3>Not here</h3>
+  <ul class="entity-list">
+    {% for m in region.absent_materials %}
+    <li><span class="badge warn">{{ m | replace('_', ' ') | title }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h3>Available to use</h3>
+  <ul class="entity-list">
+    <li><strong>Bone</strong> <span class="badge">scavenging</span></li>
+    <li><strong>Hide</strong> <span class="badge">hunting</span></li>
+    <li><strong>Dried dung</strong> <span class="badge">fuel</span></li>
+    {% set discovered_deps = region.deposits | selectattr('discovered') | list %}
+    {% for d in discovered_deps %}
+    <li>
+      <strong>{{ d.material_id | replace('_', ' ') | title }}</strong>
+      <meter value="{{ d.abundance }}" max="1"></meter>
+      {{ "%.0f"|format(d.abundance * 100) }}%
+      <span class="muted">{{ d.description }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% set hidden_surface = region.deposits | rejectattr('discovered') | selectattr('depth', 'equalto', 'surface') | list %}
+  {% set hidden_deep = region.deposits | rejectattr('discovered') | selectattr('depth', 'equalto', 'deep') | list %}
+  {% if hidden_surface or hidden_deep %}
+  <p class="muted">
+    {% if hidden_surface %}<span>Survey the cave to find more in the walls.</span>{% endif %}
+    {% if hidden_deep %}<span> Dig or invent mining tools to reach deeper deposits.</span>{% endif %}
+  </p>
+  {% endif %}
+
+  {% if game.material_stocks %}
+  <h3>Gathered stocks</h3>
+  <ul class="entity-list">
+    {% for mat_id, stock in game.material_stocks.items() %}
+    {% if stock > 0.01 %}
+    <li>{{ mat_id | replace('_', ' ') | title }}: {{ "%.0f"|format(stock * 100) }}%</li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endfor %}
+</section>

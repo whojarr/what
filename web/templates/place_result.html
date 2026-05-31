@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Deploy — WHAT{% endblock %}
+{% block content %}
+<section class="panel">
+  {% if success %}
+    {% if detail.method_learned %}
+    <h2>Method learned</h2>
+    <p>You now know <strong>{{ detail.method_learned }}</strong>.</p>
+    {% elif detail.entity %}
+    <h2>Deployed</h2>
+    <p><strong>{{ detail.entity.name }}</strong> is now active in {{ detail.entity.region_id }}.</p>
+    {% else %}
+    <h2>Done</h2>
+    {% endif %}
+    {% if detail.method_learned and detail.entity %}
+    <p class="muted">You also learned <strong>{{ detail.method_learned }}</strong> from building this.</p>
+    {% endif %}
+    {% if detail.constraint %}
+    <p>Status: {{ detail.constraint.status }}</p>
+    {% endif %}
+  {% else %}
+  <h2>Deployment failed</h2>
+  <pre>{{ detail | tojson(indent=2) }}</pre>
+  {% endif %}
+  <a href="{{ url_for('world') }}" class="button">Back to world</a>
+  <a href="{{ url_for('lab') }}" class="button">Discovery bench</a>
+</section>
+{% endblock %}

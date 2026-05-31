@@ -1,0 +1,89 @@
+warmth_output:
+  category: survival
+  range: [0, 1]
+  default: 0.0
+  meaning: Heat and light provided to the group
+
+water_output:
+  category: survival
+  range: [0, 1]
+  default: 0.0
+  meaning: Access to drinkable water
+
+food_output:
+  category: survival
+  range: [0, 1]
+  default: 0.0
+  meaning: Calories gathered or produced
+
+shelter:
+  category: survival
+  range: [0, 1]
+  default: 0.2
+  meaning: Protection from cold, collapse, and predators
+
+tool_craft:
+  category: craft
+  range: [0, 1]
+  default: 0.0
+  meaning: Quality of tools and implements
+
+light:
+  category: survival
+  range: [0, 1]
+  default: 0.0
+  meaning: Visibility in darkness
+
+social_cohesion:
+  category: social
+  range: [0, 1]
+  default: 0.3
+  meaning: Group coordination and morale
+
+hunting:
+  category: survival
+  range: [0, 1]
+  default: 0.0
+  meaning: Ability to hunt or deter predators
+
+storage:
+  category: craft
+  range: [0, 1]
+  default: 0.0
+  meaning: Preserving food and materials
+
+warmth_demand:
+  category: survival
+  range: [0, 1]
+  default: 0.0
+  meaning: Warmth consumed to operate
+
+food_demand:
+  category: survival
+  range: [0, 1]
+  default: 0.0
+  meaning: Food consumed to operate
+
+material_demand:
+  category: craft
+  range: [0, 1]
+  default: 0.0
+  meaning: Materials consumed to build or maintain
+
+maintenance_complexity:
+  category: operations
+  range: [0, 1]
+  default: 0.3
+  meaning: Ongoing effort to keep working
+
+uncertainty:
+  category: meta
+  range: [0, 1]
+  default: 0.0
+  meaning: Unproven or anachronistic ideas
+
+innovation_rate:
+  category: social
+  range: [0, 1]
+  default: 0.0
+  meaning: Pace of new discoveries

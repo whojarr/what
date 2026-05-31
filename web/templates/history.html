@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}History — WHAT{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Memory search</h2>
+  <form method="get">
+    <input type="text" name="q" value="{{ query }}" placeholder="Search past ideas and events">
+    <button type="submit">Search</button>
+  </form>
+  <ul>
+    {% for r in records %}
+    <li><span class="badge">{{ r.kind }}</span> turn {{ r.turn }}: {{ r.text }}</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Event log</h2>
+  <ul>
+    {% for e in events %}
+    <li>Turn {{ e.turn }}: {{ e.type }} ({{ "%.2f"|format(e.severity) }}) — {{ e.description }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

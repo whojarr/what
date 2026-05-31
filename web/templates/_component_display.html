@@ -1,0 +1,29 @@
+{# Components are machines — fire, water, tools, and things built from them #}
+{% macro component_label(entity) -%}
+  {{ entity.label or entity.name }}
+{%- endmacro %}
+
+{% macro component_hint(entity) -%}
+  {% if entity.hint %}
+    {{ entity.hint }}
+  {% elif entity.role == 'fire' %}
+    A heat component — combine with materials or other components.
+  {% elif entity.role == 'water' %}
+    A water component — combine with materials or other components.
+  {% else %}
+    A built component — combine with materials or other components.
+  {% endif %}
+{%- endmacro %}
+
+{% macro component_badge(entity) -%}
+  {% if entity.kind == 'starter' %}
+    <span class="badge">starter</span>
+  {% endif %}
+  {% if entity.role == 'fire' %}
+    <span class="badge">fire</span>
+  {% elif entity.role == 'water' %}
+    <span class="badge">water</span>
+  {% elif entity.role == 'machine' %}
+    <span class="badge">machine</span>
+  {% endif %}
+{%- endmacro %}
