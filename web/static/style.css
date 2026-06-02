@@ -465,13 +465,10 @@ body[data-graphics-level="1"] .world-preview-chip .visual-thumb {
   transition: background 0.15s ease, box-shadow 0.15s ease;
   cursor: pointer;
 }
-.materials-col-link,
-.world-page-grid .materials-col:not(.materials-col-link) {
+.materials-col-link {
   background: #243044;
   padding: 0.55rem 0.6rem;
   border-radius: 6px;
-}
-.materials-col-link {
   min-height: 0;
 }
 .materials-col-link:hover {

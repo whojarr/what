@@ -42,6 +42,7 @@
   };
 
   const PANELS = {
+    "materials-absent": { title: "Not here", section: "materialsAbsent" },
     "materials-available": { title: "Available to use", section: "materialsAvailable" },
     "materials-stocks": { title: "Gathered stocks", section: "materialsStocks" },
     components: { title: "Components", section: "components" },
@@ -176,8 +177,13 @@
   }
 
   function renderMaterialsPanel(absent, available, stocks, components, objects, regionId) {
+    const absentCount = (absent.items || []).length;
     const absentItems = (absent.items || [])
-      .map((m) => `<li><span class="badge warn">${esc(m.name)}</span></li>`)
+      .slice(0, previewLimit)
+      .map(
+        (m) =>
+          `<li class="world-preview-item world-preview-chip" data-world-preview data-world-panel="materials-absent" data-world-item="absent" data-item-id="${esc(m.id)}">${gSlot("material", m)}<span class="world-preview-text"><strong>${esc(m.name)}</strong> <span class="badge warn">not here</span></span></li>`
+      )
       .join("");
     const availItems = (available.items || [])
       .slice(0, previewLimit)
@@ -199,12 +205,14 @@
       <section class="panel materials-panel">
         <h2>${esc(materialsPanelTitle(regionId))}</h2>
         <div class="materials-columns materials-columns-all">
-          <div class="materials-col">
-            <h3>Not here</h3>
+          <a href="#materials-absent" class="materials-col materials-col-link" data-world-panel="materials-absent">
+            <h3>Not here <span class="section-count">${absentCount}</span></h3>
+            <p class="muted materials-col-lede" title="Materials not found in this region.">Not found in this region.</p>
             <ul class="entity-list entity-list-compact">${
               absentItems || '<li class="muted">Nothing ruled out yet.</li>'
             }</ul>
-          </div>
+            ${sectionMore(absentCount)}
+          </a>
           <a href="#materials-available" class="materials-col materials-col-link" data-world-panel="materials-available">
             <h3>Available to use <span class="section-count">${(available.items || []).length}</span></h3>
             <ul class="entity-list entity-list-compact">${
@@ -349,6 +357,26 @@
       </li>`;
   }
 
+  function renderMaterialsAbsentList(data) {
+    const rows = (data.items || [])
+      .map((m) =>
+        panelListRow(
+          "absent",
+          m.id,
+          "materials-absent",
+          `<span class="panel-item-name">${esc(m.name)}</span> <span class="badge warn">not here</span>`,
+          "",
+          m,
+          "material"
+        )
+      )
+      .join("");
+
+    return `
+      <p class="muted">These materials are not available in this region.</p>
+      <ul class="panel-item-list">${rows || '<li class="muted">Nothing ruled out yet.</li>'}</ul>`;
+  }
+
   function renderMaterialsAvailableList(data) {
     const rows = (data.items || [])
       .map((m) => {
@@ -465,6 +493,7 @@
   }
 
   const LIST_RENDERERS = {
+    materialsAbsent: renderMaterialsAbsentList,
     materialsAvailable: renderMaterialsAvailableList,
     materialsStocks: renderMaterialsStocksList,
     components: renderComponentsList,
@@ -512,6 +541,22 @@
           ${renderDetailFields(fields)}
           ${Object.keys(caps).length ? `<h4 class="detail-subhead">Capabilities</h4>${renderCapabilities(caps)}` : ""}
           <p class="detail-footnote muted">Use at <a href="/lab">Discover</a> as a component or ingredient.</p>
+        </div>
+      </div>`;
+  }
+
+  function renderAbsentMaterialDetail(m) {
+    return `
+      <div class="panel-item-detail">
+        <div class="detail-card">
+          <div class="detail-card-head">
+            ${gSlot("material", m, { large: true })}
+            <div class="detail-card-head-text">
+              <strong>${esc(m.name)}</strong>
+              <span class="badge warn">not here</span>
+            </div>
+          </div>
+          <p class="detail-desc">This material is not available in the current region. Survey, travel, or invent substitutes if you need it.</p>
         </div>
       </div>`;
   }
@@ -670,7 +715,7 @@
     const data = sectionCache[config.section];
     if (!data) return null;
 
-    if (itemRef.type === "material") {
+    if (itemRef.type === "material" || itemRef.type === "absent") {
       return (data.items || []).find((m) => m.id === itemRef.id);
     }
     if (itemRef.type === "stock") {
@@ -692,6 +737,10 @@
     if (itemRef.type === "material") {
       const m = findCachedItem(itemRef);
       return m ? renderMaterialDetail(m) : '<p class="error">Material not found.</p>';
+    }
+    if (itemRef.type === "absent") {
+      const m = findCachedItem(itemRef);
+      return m ? renderAbsentMaterialDetail(m) : '<p class="error">Material not found.</p>';
     }
     if (itemRef.type === "stock") {
       const s = findCachedItem(itemRef);
