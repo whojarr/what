@@ -17,6 +17,7 @@ build/
 
 # Local game saves (player progress; not for the repo)
 data/saves/
+data/images/
 
 # Node / Serverless deploy artifacts
 node_modules/

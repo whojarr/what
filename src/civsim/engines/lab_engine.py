@@ -7,7 +7,7 @@ import yaml
 
 from civsim.models.capabilities import IdeaProposal
 from civsim.models.entity_kinds import classify_entity_tags
-from civsim.models.world import GameState, Region
+from civsim.models.world import novel_compound_name, Region
 from civsim.registry.material_registry import MaterialRegistry
 
 IMPLICIT_MATERIALS = frozenset({"bone", "hide", "dung"})
@@ -397,11 +397,14 @@ class LabEngine:
                     "abundance": deposit.abundance,
                 }
             )
-        for compound_id, display in sorted(state.novel_compounds.items()):
+        for compound_id, entry in sorted(state.novel_compounds.items()):
+            if compound_id in seen:
+                continue
+            seen.add(compound_id)
             items.append(
                 {
                     "id": compound_id,
-                    "name": display,
+                    "name": novel_compound_name(entry),
                     "source": "discovered",
                     "stock": state.material_stocks.get(compound_id, 0.0),
                 }

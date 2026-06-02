@@ -4,21 +4,67 @@ import random
 import uuid
 
 from civsim.models.entity import Entity
-from civsim.models.world import ClimateState, DEFAULT_ERA, GameState, MaterialDeposit, Region, Resources
+from civsim.models.world import (
+    ClimateState,
+    DEFAULT_ERA,
+    GameState,
+    MaterialDeposit,
+    Region,
+    RegionExit,
+    Resources,
+)
 
 
 class WorldGenerator:
-    def generate(self, seed: int, region_count: int = 1) -> GameState:
+    def generate(self, seed: int, region_count: int = 2) -> GameState:
         rng = random.Random(seed)
         deposits = self._cave_deposits(rng)
-        region = Region(
+        cave = Region(
             id="cave_chamber",
             name="The Cave",
             biome_tags=["cave", "sheltered", "damp", "spring"],
             energy_ceiling=0.5,
             water_availability=0.55,
             absent_materials=["wood", "plant_fiber", "clay"],
+            always_available=["bone", "hide", "dung"],
             deposits=deposits,
+            exits=[
+                RegionExit(
+                    id="passage_out",
+                    name="Daylight passage",
+                    target_region_id="outside_slope",
+                    description="A narrow crack where pale daylight filters in, leading outward.",
+                )
+            ],
+        )
+        outside = Region(
+            id="outside_slope",
+            name="Outside the cave",
+            biome_tags=["grassland", "exposed", "wind", "daylight"],
+            energy_ceiling=0.85,
+            water_availability=0.3,
+            absent_materials=[
+                "flint",
+                "limestone",
+                "iron_oxide",
+                "sulfur",
+                "manganese",
+                "bone",
+                "hide",
+                "dung",
+            ],
+            always_available=["wood", "plant_fiber", "clay"],
+            deposits=[],
+            exits=[
+                RegionExit(
+                    id="passage_in",
+                    name="Cave mouth",
+                    target_region_id="cave_chamber",
+                    description="The sheltered cave lies back through the passage.",
+                    discovered=False,
+                    accessible=False,
+                )
+            ],
         )
         fixtures = [
             Entity(
@@ -31,7 +77,7 @@ class WorldGenerator:
                     "light": 0.4,
                     "maintenance_complexity": 0.1,
                 },
-                region_id=region.id,
+                region_id=cave.id,
                 health=1.0,
                 operational=True,
             ),
@@ -44,11 +90,12 @@ class WorldGenerator:
                     "water_output": 0.45,
                     "maintenance_complexity": 0.05,
                 },
-                region_id=region.id,
+                region_id=cave.id,
                 health=1.0,
                 operational=True,
             ),
         ]
+        regions = [cave, outside] if region_count >= 2 else [cave]
         return GameState(
             id=str(uuid.uuid4()),
             turn=0,
@@ -69,7 +116,7 @@ class WorldGenerator:
                 atmospheric_instability=0.08 + rng.random() * 0.05,
                 ecosystem_health=0.7 + rng.random() * 0.1,
             ),
-            regions=[region],
+            regions=regions,
             entities=fixtures,
             entity_names={
                 "natural_fire": "Fire",

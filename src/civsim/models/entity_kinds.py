@@ -210,12 +210,40 @@ def is_component(entity: Entity) -> bool:
     return has_machine_io(entity.capabilities)
 
 
+def normalize_tags(raw: list[str]) -> list[str]:
+    """Split comma-joined tag strings and dedupe."""
+    out: list[str] = []
+    for tag in raw:
+        t = tag.strip().lower()
+        if not t:
+            continue
+        if "," in t:
+            out.extend(p.strip() for p in t.split(",") if p.strip())
+        else:
+            out.append(t)
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for t in out:
+        if t not in seen:
+            seen.add(t)
+            deduped.append(t)
+    return deduped
+
+
+def entity_kind(entity: Entity) -> str:
+    if is_component(entity):
+        return "component"
+    if is_object(entity):
+        return "object"
+    return "other"
+
+
 def classify_entity_tags(
     tags: list[str],
     entity_type: str,
     capabilities: dict[str, float],
 ) -> list[str]:
-    normalized = [t.lower().strip() for t in tags]
+    normalized = normalize_tags(tags)
     tag_set = set(normalized)
 
     if "object" in tag_set or entity_type.startswith(OBJECT_TYPE_PREFIXES):

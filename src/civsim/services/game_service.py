@@ -1,7 +1,10 @@
 import json
 import os
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
+
+from pydantic import ValidationError
 
 from civsim.ai.openai_interpreter import OpenAIInterpreter
 from civsim.ai.text_normalize import normalize_invention_text
@@ -21,13 +24,23 @@ from civsim.models.capabilities import (
 )
 from civsim.models.entity_kinds import (
     classify_entity_tags,
+    classification_reason,
     component_display,
+    entity_kind,
     is_component,
     is_object,
     object_display,
 )
 from civsim.models.entity import Entity, EntityDraft
-from civsim.models.world import DEFAULT_ERA, GameState, Region, TickResult
+from civsim.models.world import (
+    CompoundProvenance,
+    DEFAULT_ERA,
+    GameState,
+    NovelCompound,
+    Region,
+    TickResult,
+    novel_compound_name,
+)
 from civsim.registry.capability_registry import CapabilityRegistry
 from civsim.registry.material_registry import MaterialRegistry
 from civsim.registry.method_registry import MethodRegistry
@@ -85,6 +98,76 @@ class GameService:
         state = GameState.model_validate(data)
         self.method_engine.sync_from_world(state)
         return state
+
+    def list_saves(self) -> list[dict]:
+        summaries: list[dict] = []
+        for path in self.saves_path.glob("*.json"):
+            try:
+                mtime = path.stat().st_mtime
+                with path.open() as f:
+                    data = json.load(f)
+                state = GameState.model_validate(data)
+            except (OSError, json.JSONDecodeError, ValidationError):
+                continue
+            primary_region = state.regions[0].name if state.regions else ""
+            summaries.append(
+                {
+                    "id": state.id,
+                    "turn": state.turn,
+                    "rng_seed": state.rng_seed,
+                    "era": state.era,
+                    "invention_count": state.invention_count,
+                    "primary_region": primary_region,
+                    "saved_at": datetime.fromtimestamp(mtime, tz=UTC).isoformat(),
+                }
+            )
+        summaries.sort(key=lambda s: s["saved_at"], reverse=True)
+        return summaries
+
+    def resolve_visual_subject(
+        self, game_id: str, subject_type: str, subject_id: str
+    ) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        era = state.era
+        st = subject_type.lower().strip()
+        if st in ("material", "stock"):
+            name = self.material_registry.name_for(subject_id)
+            blurb = self._BASELINE_MATERIAL_BLURBS.get(subject_id, "")
+            uses = self._BASELINE_MATERIAL_USES.get(subject_id, "")
+            hint = blurb or uses or "Raw material for crafting."
+            return {
+                "type": st,
+                "id": subject_id,
+                "name": name,
+                "hint": hint,
+                "era": era,
+            }
+        if st == "compound":
+            entry = state.novel_compounds.get(subject_id)
+            if not entry:
+                return None
+            return {
+                "type": "compound",
+                "id": subject_id,
+                "name": novel_compound_name(entry),
+                "hint": "A novel compound discovered at the discovery bench.",
+                "era": era,
+            }
+        if st in ("component", "object"):
+            entity = next((e for e in state.entities if e.id == subject_id), None)
+            if not entity:
+                return None
+            display = component_display(entity) if st == "component" else object_display(entity)
+            return {
+                "type": st,
+                "id": subject_id,
+                "name": display["label"],
+                "hint": display.get("hint") or "",
+                "era": era,
+            }
+        return None
 
     def _save(self, state: GameState) -> None:
         path = self.saves_path / f"{state.id}.json"
@@ -206,11 +289,34 @@ class GameService:
             return None, result, None, learned_name
 
         entity_id = f"infra_{uuid.uuid4().hex[:8]}"
+        classified_tags = classify_entity_tags(draft.tags, draft.type, draft.capabilities)
+        preview = Entity(
+            id="__preview__",
+            name=draft.name,
+            type=draft.type,
+            tags=classified_tags,
+            capabilities=draft.capabilities,
+            region_id=draft.region_id,
+        )
+        kind = entity_kind(preview)
+        name_key = draft.name.lower().strip()
+        for existing in state.entities:
+            if existing.region_id != draft.region_id:
+                continue
+            if existing.name.lower().strip() != name_key:
+                continue
+            if entity_kind(existing) != kind:
+                continue
+            self.memory.record_idea(
+                draft.name, existing.id, result.status.value, state.turn, game_id
+            )
+            return existing, result, None, None
+
         entity = Entity(
             id=entity_id,
             name=draft.name,
             type=draft.type,
-            tags=classify_entity_tags(draft.tags, draft.type, draft.capabilities),
+            tags=classified_tags,
             capabilities=draft.capabilities,
             region_id=draft.region_id,
         )
@@ -231,7 +337,11 @@ class GameService:
             state, region, draft.tags, draft.capabilities
         )
         compound_fb = self._register_novel_compound(
-            state, draft.name, entity.tags, entity.type
+            state,
+            draft.name,
+            entity.tags,
+            entity.type,
+            provenance=self._build_compound_provenance(state, source="invent"),
         )
         if compound_fb:
             discovery_fb = discovery_fb + [compound_fb]
@@ -305,8 +415,15 @@ class GameService:
             return None
 
         survey = self.material_engine.survey_region(state, region)
+        exit_feedback: list[str] = []
+        for passage in region.exits:
+            if not passage.discovered:
+                passage.discovered = True
+                exit_feedback.append(
+                    f"You find {passage.name.lower()}: {passage.description}"
+                )
         tick_result = self.simulation.tick(state)
-        feedback = survey.feedback + tick_result.feedback
+        feedback = exit_feedback + survey.feedback + tick_result.feedback
         self._save(state)
 
         discoveries = [
@@ -352,8 +469,8 @@ class GameService:
             ],
             "discovered_materials": discovered,
             "novel_compounds": [
-                {"id": cid, "name": name}
-                for cid, name in sorted(state.novel_compounds.items())
+                {"id": cid, "name": novel_compound_name(entry)}
+                for cid, entry in sorted(state.novel_compounds.items())
             ],
             "undiscovered_hint": " ".join(hint_parts) if hint_parts else "",
             "region_surveyed": region.id in state.surveyed_region_ids,
@@ -386,8 +503,8 @@ class GameService:
         return {
             "region_id": region.id,
             "materials": materials,
-            "components": components,
-            "objects": objects,
+            "components": self._collapse_named_items(components),
+            "objects": self._collapse_named_items(objects),
             "methods": self.method_engine.list_for_ui(state),
         }
 
@@ -534,15 +651,97 @@ class GameService:
         return None
 
     def _register_novel_compound(
-        self, state: GameState, name: str, tags: list[str], entity_type: str
+        self,
+        state: GameState,
+        name: str,
+        tags: list[str],
+        entity_type: str,
+        *,
+        provenance: CompoundProvenance | None = None,
     ) -> str | None:
         registered = self.material_engine.register_novel_compound(
-            state, name, tags, entity_type
+            state, name, tags, entity_type, provenance=provenance
         )
         if not registered:
             return None
         _compound_id, feedback = registered
         return feedback
+
+    def _build_compound_provenance(
+        self,
+        state: GameState,
+        *,
+        source: str,
+        material_ids: list[str] | None = None,
+        component_ids: list[str] | None = None,
+        object_ids: list[str] | None = None,
+        method_ids: list[str] | None = None,
+        intent: str = "",
+        recipe_id: str | None = None,
+    ) -> CompoundProvenance:
+        return CompoundProvenance(
+            materials=list(material_ids or []),
+            components=list(component_ids or []),
+            objects=list(object_ids or []),
+            methods=list(method_ids or []),
+            intent=intent or "",
+            turn=state.turn,
+            source=source,  # type: ignore[arg-type]
+            recipe_id=recipe_id,
+        )
+
+    def _provenance_public(self, state: GameState, prov: CompoundProvenance) -> dict:
+        entity_names = {e.id: e.name for e in state.entities}
+        method_names = {m.id: m.name for m in self.method_registry.all_methods()}
+
+        def names(ids: list[str], lookup: dict[str, str], fallback_prefix: str) -> list[dict]:
+            return [{"id": i, "name": lookup.get(i, i.replace("_", " ").title())} for i in ids]
+
+        materials = names(
+            prov.materials,
+            {mid: self.material_engine.name_for(mid, state) for mid in prov.materials},
+            "material",
+        )
+        components = names(prov.components, entity_names, "component")
+        objects = names(prov.objects, entity_names, "object")
+        methods = names(prov.methods, method_names, "method")
+
+        parts: list[str] = []
+        parts.extend(m["name"] for m in materials)
+        parts.extend(c["name"] for c in components)
+        parts.extend(o["name"] for o in objects)
+        if methods:
+            parts.append("via " + " + ".join(m["name"] for m in methods))
+        if prov.intent:
+            parts.append(f'("{prov.intent}")')
+
+        return {
+            "source": prov.source,
+            "turn": prov.turn,
+            "intent": prov.intent,
+            "recipe_id": prov.recipe_id,
+            "materials": materials,
+            "components": components,
+            "objects": objects,
+            "methods": methods,
+            "summary": " + ".join(parts) if parts else "",
+        }
+
+    def _compound_public(self, state: GameState, compound_id: str, entry: NovelCompound) -> dict:
+        prov = entry.provenance
+        public_prov = self._provenance_public(state, prov)
+        has_inputs = bool(
+            prov.materials or prov.components or prov.objects or prov.methods or prov.intent
+        )
+        return {
+            "id": compound_id,
+            "name": entry.name,
+            "description": "A novel compound you discovered by combining materials at the bench.",
+            "uses": "Use as an ingredient in further experiments.",
+            "provenance": public_prov,
+            "made_from": public_prov["summary"],
+            "has_provenance": has_inputs,
+        }
 
     def _interpret_lab_with_ai(
         self,
@@ -615,7 +814,19 @@ class GameService:
         self.material_engine._aggregate_materials_meter(state)
         self._bump_path_divergence(state, proposal.capabilities, proposal.tags)
         compound_fb = self._register_novel_compound(
-            state, proposal.player_name, proposal.tags, proposal.type
+            state,
+            proposal.player_name,
+            proposal.tags,
+            proposal.type,
+            provenance=self._build_compound_provenance(
+                state,
+                source="lab",
+                material_ids=material_ids,
+                component_ids=component_ids,
+                object_ids=object_ids,
+                method_ids=method_ids,
+                intent=intent,
+            ),
         )
         self._save(state)
 
@@ -670,11 +881,132 @@ class GameService:
         self._save(state)
         return result
 
-    _BASELINE_MATERIALS = (
-        {"id": "bone", "name": "Bone", "badge": "scavenging", "source": "baseline"},
-        {"id": "hide", "name": "Hide", "badge": "hunting", "source": "baseline"},
-        {"id": "dried_dung", "name": "Dried dung", "badge": "fuel", "source": "baseline"},
-    )
+    def travel_to_region(
+        self, game_id: str, target_region_id: str, from_region_id: str | None = None
+    ) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        from_region = self._world_region(state, from_region_id)
+        target = next((r for r in state.regions if r.id == target_region_id), None)
+        if not from_region or not target:
+            return None
+
+        passage = next(
+            (e for e in from_region.exits if e.target_region_id == target_region_id),
+            None,
+        )
+        if not passage or not passage.discovered:
+            return {
+                "error": "You have not found a way there yet.",
+                "errors": ["You have not found a way there yet. Survey the area first."],
+            }
+
+        passage.accessible = True
+        return_passage = next(
+            (e for e in target.exits if e.target_region_id == from_region.id),
+            None,
+        )
+        if return_passage:
+            return_passage.discovered = True
+            return_passage.accessible = True
+
+        self._save(state)
+        return {
+            "region_id": target.id,
+            "region_name": target.name,
+            "from_region_id": from_region.id,
+            "from_region_name": from_region.name,
+            "feedback": [f"You reach {target.name} through {passage.name.lower()}."],
+        }
+
+    _BASELINE_MATERIAL_META: dict[str, dict[str, str]] = {
+        "bone": {"name": "Bone", "badge": "scavenging"},
+        "hide": {"name": "Hide", "badge": "hunting"},
+        "dung": {"name": "Dried dung", "badge": "fuel"},
+        "wood": {"name": "Wood", "badge": "foraging"},
+        "plant_fiber": {"name": "Plant fiber", "badge": "gathering"},
+        "clay": {"name": "Clay", "badge": "earth"},
+    }
+
+    _BASELINE_MATERIAL_BLURBS = {
+        "bone": "Scavenged from carcasses — sharp fragments, needles, and awls.",
+        "hide": "From hunting — leather, cordage, and weatherproof layers.",
+        "dung": "Collected as slow-burning fuel for fire and heat.",
+        "wood": "Branches and deadfall from the open slope — fuel and structure.",
+        "plant_fiber": "Grasses and bark strips — cordage and weaving.",
+        "clay": "Soft earth at the surface — pottery and binding when fired.",
+    }
+
+    _BASELINE_MATERIAL_USES = {
+        "bone": "Tools, needles, points, and structural bits.",
+        "hide": "Cordage, garments, shelter skins, and binding.",
+        "dung": "Fuel for cooking, warmth, and firing clay.",
+        "wood": "Handles, fuel, frames, and digging tools.",
+        "plant_fiber": "Twine, weaving, binding, and soft layers.",
+        "clay": "Pottery, cement-like mixes, and molded forms.",
+    }
+
+    def _baseline_items_for_region(self, region: Region) -> list[dict]:
+        items: list[dict] = []
+        for mid in region.always_available:
+            meta = self._BASELINE_MATERIAL_META.get(mid, {})
+            items.append(
+                self._material_registry_detail(
+                    mid,
+                    name=meta.get("name") or self.material_registry.name_for(mid),
+                    badge=meta.get("badge", "nearby"),
+                    source="baseline",
+                    description=self._BASELINE_MATERIAL_BLURBS.get(mid, ""),
+                    uses=self._BASELINE_MATERIAL_USES.get(mid, ""),
+                    obtain=f"Always available — {meta.get('badge', 'nearby')}",
+                )
+            )
+        return items
+
+    def _region_public(self, region: Region) -> dict:
+        return {
+            "id": region.id,
+            "name": region.name,
+            "biome_tags": region.biome_tags,
+        }
+
+    def _exits_public(self, state: GameState, region: Region) -> list[dict]:
+        region_names = {r.id: r.name for r in state.regions}
+        exits: list[dict] = []
+        for passage in region.exits:
+            status = "hidden"
+            if passage.discovered and passage.accessible:
+                status = "open"
+            elif passage.discovered:
+                status = "found"
+            exits.append(
+                {
+                    "id": passage.id,
+                    "name": passage.name,
+                    "target_region_id": passage.target_region_id,
+                    "target_region_name": region_names.get(
+                        passage.target_region_id, passage.target_region_id
+                    ),
+                    "description": passage.description,
+                    "discovered": passage.discovered,
+                    "accessible": passage.accessible,
+                    "status": status,
+                }
+            )
+        return exits
+
+    def _material_registry_detail(self, material_id: str, **extra: object) -> dict:
+        defn = self.material_registry.get(material_id)
+        item = {
+            "id": material_id,
+            "name": self.material_registry.name_for(material_id),
+            "tags": sorted(defn.tags) if defn else [],
+            "substitutes": self.material_registry.substitute_names(material_id),
+            "implicit": self.material_registry.is_implicit(material_id) if defn else False,
+        }
+        item.update(extra)
+        return item
 
     def _world_region(self, state: GameState, region_id: str | None) -> Region | None:
         if region_id:
@@ -695,11 +1027,9 @@ class GameService:
             "path_divergence": state.path_divergence,
             "invention_count": state.invention_count,
             "resources": state.resources.model_dump(),
-            "region": {
-                "id": region.id,
-                "name": region.name,
-                "biome_tags": region.biome_tags,
-            },
+            "region": self._region_public(region),
+            "regions": [self._region_public(r) for r in state.regions],
+            "exits": self._exits_public(state, region),
         }
 
     def get_world_materials_absent(self, game_id: str, region_id: str | None = None) -> dict | None:
@@ -726,19 +1056,25 @@ class GameService:
         region = self._world_region(state, region_id)
         if not region:
             return None
-        items = [dict(item) for item in self._BASELINE_MATERIALS]
+        items = self._baseline_items_for_region(region)
         for deposit in region.deposits:
             if not deposit.discovered:
                 continue
+            mid = deposit.material_id
+            depth_hint = (
+                "Survey found this in the cave walls."
+                if deposit.depth == "surface"
+                else "Deep deposit — mining or excavation tools help."
+            )
             items.append(
-                {
-                    "id": deposit.material_id,
-                    "name": self.material_registry.name_for(deposit.material_id),
-                    "source": "deposit",
-                    "abundance": deposit.abundance,
-                    "depth": deposit.depth,
-                    "description": deposit.description,
-                }
+                self._material_registry_detail(
+                    mid,
+                    source="deposit",
+                    abundance=deposit.abundance,
+                    depth=deposit.depth,
+                    description=deposit.description or depth_hint,
+                    obtain=depth_hint,
+                )
             )
         hidden_surface = any(
             d.depth == "surface" and not d.discovered for d in region.deposits
@@ -765,17 +1101,23 @@ class GameService:
         if not region:
             return None
         stocks = [
-            {
-                "id": mat_id,
-                "name": self.material_registry.name_for(mat_id),
-                "stock": stock,
-            }
+            self._material_registry_detail(
+                mat_id,
+                stock=stock,
+                storage_note=(
+                    "Running low — survey, scavenge, or combine to refill."
+                    if stock < 0.25
+                    else "Moderate supply — keep gathering or experimenting."
+                    if stock < 0.6
+                    else "Well stocked for discovery bench work."
+                ),
+            )
             for mat_id, stock in sorted(state.material_stocks.items())
             if stock > 0.01
         ]
         compounds = [
-            {"id": cid, "name": name}
-            for cid, name in sorted(state.novel_compounds.items())
+            self._compound_public(state, cid, entry)
+            for cid, entry in sorted(state.novel_compounds.items())
         ]
         return {
             "region_id": region.id,
@@ -785,6 +1127,13 @@ class GameService:
 
     def _world_entity_item(self, entity: Entity, state: GameState, display: dict) -> dict:
         region_names = {r.id: r.name for r in state.regions}
+        caps = entity.capabilities or {}
+        active_caps = {
+            k: round(v, 3)
+            for k, v in sorted(caps.items())
+            if v > 0.05
+        }
+        kind = entity_kind(entity)
         return {
             "id": entity.id,
             "name": entity.name,
@@ -795,8 +1144,50 @@ class GameService:
             "region_id": entity.region_id,
             "region_name": region_names.get(entity.region_id, entity.region_id),
             "capabilities": entity.capabilities,
+            "active_capabilities": active_caps,
+            "classification": classification_reason(caps),
+            "entity_kind": kind,
             "display": display,
+            "status_note": (
+                "Working normally."
+                if entity.operational
+                else "Offline or damaged — repair or rebuild may be needed."
+            ),
         }
+
+    def _collapse_named_items(self, items: list[dict]) -> list[dict]:
+        """Merge same-name entries (e.g. repeated lab results)."""
+        grouped: dict[str, dict] = {}
+        for item in items:
+            key = item["name"].lower().strip()
+            if key not in grouped:
+                grouped[key] = {**item, "count": 1, "instance_ids": [item["id"]]}
+                continue
+            entry = grouped[key]
+            entry["count"] += 1
+            entry["instance_ids"].append(item["id"])
+            if "health" in entry and "health" in item:
+                entry["health"] = max(entry["health"], item["health"])
+            if "operational" in entry and "operational" in item:
+                entry["operational"] = entry["operational"] and item["operational"]
+            if entry.get("type", "").endswith(".*") and not item.get("type", "").endswith(".*"):
+                for field in (
+                    "type",
+                    "id",
+                    "tags",
+                    "capabilities",
+                    "display",
+                    "role",
+                    "label",
+                    "hint",
+                    "kind",
+                ):
+                    if field in item:
+                        entry[field] = item[field]
+        return list(grouped.values())
+
+    def _collapse_world_items(self, items: list[dict]) -> list[dict]:
+        return self._collapse_named_items(items)
 
     def get_world_components(self, game_id: str, region_id: str | None = None) -> dict | None:
         state = self.load_game(game_id)
@@ -805,11 +1196,11 @@ class GameService:
         region = self._world_region(state, region_id)
         if not region:
             return None
-        items = [
+        items = self._collapse_world_items([
             self._world_entity_item(e, state, component_display(e))
             for e in state.entities
-            if is_component(e)
-        ]
+            if is_component(e) and e.region_id == region.id
+        ])
         return {"region_id": region.id, "items": items}
 
     def get_world_objects(self, game_id: str, region_id: str | None = None) -> dict | None:
@@ -819,12 +1210,32 @@ class GameService:
         region = self._world_region(state, region_id)
         if not region:
             return None
-        items = [
+        items = self._collapse_world_items([
             self._world_entity_item(e, state, object_display(e))
             for e in state.entities
-            if is_object(e)
-        ]
+            if is_object(e) and e.region_id == region.id
+        ])
         return {"region_id": region.id, "items": items}
+
+    def get_entity(self, game_id: str, entity_id: str) -> dict | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        entity = next((e for e in state.entities if e.id == entity_id), None)
+        if not entity:
+            return None
+        if is_component(entity):
+            kind = "component"
+            display = component_display(entity)
+        elif is_object(entity):
+            kind = "object"
+            display = object_display(entity)
+        else:
+            kind = "entity"
+            display = {"label": entity.name, "hint": "", "role": None, "kind": None}
+        item = self._world_entity_item(entity, state, display)
+        item["kind"] = kind
+        return item
 
     def get_events(self, game_id: str, limit: int = 20) -> list:
         state = self.load_game(game_id)

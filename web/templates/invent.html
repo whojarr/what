@@ -1,94 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Invent — WHAT{% endblock %}
+{% block main_class %}main-wide{% endblock %}
 {% block content %}
-{% with heading="What you have to work with" %}
-{% include "_materials_panel.html" %}
-{% endwith %}
-<section class="panel">
-  <h2>Propose an invention</h2>
-  <form method="post">
-    <textarea name="idea" rows="4" placeholder="e.g. sewing, smelting, sharpened stones, bone needles, cooking meat" required></textarea>
-    <label>Place in
-      <select name="region_id">
-        {% for r in game.regions %}
-        <option value="{{ r.id }}" {% if r.id == last_region_id %}selected{% endif %}>{{ r.name }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <button type="submit" class="primary">Interpret idea</button>
-  </form>
-  {% if error %}
-  <p class="error feedback-recent">{{ error }}</p>
-  {% endif %}
-</section>
-
-{% if result %}
-<section class="panel feedback-recent">
-  <h3>{{ result.proposal.player_name }}</h3>
-  {% if result.typo_note %}
-  <p class="warn">{{ result.typo_note }}</p>
-  {% endif %}
-  <p class="muted">{{ result.proposal.reasoning }}</p>
-  <p><strong>Type:</strong> {{ result.proposal.type }}</p>
-  <p><strong>Tags:</strong> {{ result.proposal.tags | join(', ') }}</p>
-
-  {% set status = result.constraint.status %}
-  <h4>
-    {% if status == 'VALID' %}Ready to build
-    {% elif status == 'RISKY' %}Risky but possible
-    {% elif status == 'NEEDS_TWEAK' %}Needs a clearer idea
-    {% else %}Blocked{% endif %}
-    <span class="status-{{ status }}">({{ status }})</span>
-  </h4>
-
-  {% for w in result.constraint.warnings %}
-  <p class="warn">{{ w }}</p>
-  {% endfor %}
-  {% for h in result.constraint.hidden_issues %}
-  <p class="error">{{ h }}</p>
-  {% endfor %}
-  {% for adj in result.constraint.suggested_adjustments %}
-  <p class="muted">Hint: {{ adj.suggestion }}</p>
-  {% endfor %}
-
-  {% if result.normalized.dropped_capability_keys %}
-  <p class="muted">Mapped away from this era: {{ result.normalized.dropped_capability_keys | join(', ') }}</p>
-  {% endif %}
-
-  <h4>Strengths</h4>
-  <div class="cap-bars">
-    {% for key, val in result.normalized.capabilities.items() %}
-    {% if val > 0.05 %}
-    <div class="cap-row">
-      <span>{{ key }}</span>
-      <meter value="{{ val }}" max="1"></meter>
-      <span>{{ "%.2f"|format(val) }}</span>
-    </div>
-    {% endif %}
-    {% endfor %}
-  </div>
-
-  {% if result.memory_hints %}
-  <h4>Memory</h4>
-  <ul>{% for h in result.memory_hints %}<li>{{ h }}</li>{% endfor %}</ul>
-  {% endif %}
-
-  {% if status != 'BLOCKED' %}
-  {% set is_method = result.proposal.type.startswith('method.') %}
-  <form action="{{ url_for('place') }}" method="post" class="place-form">
-    <input type="hidden" name="type" value="{{ result.normalized.type }}">
-    <input type="hidden" name="tags" value="{{ result.normalized.tags | join(',') }}">
-    <input type="hidden" name="capabilities_json" value="{{ result.normalized.capabilities | tojson }}">
-    <input type="hidden" name="region_id" id="place_region_id" value="{{ last_region_id or game.regions[0].id }}">
-    <label>{% if is_method %}Method name{% else %}Invention name{% endif %}
-      <input type="text" name="invention_name" autocomplete="off"
-             value="{{ result.proposal.player_name }}">
-    </label>
-    <button type="submit" class="primary">
-      {% if is_method %}Learn this method{% elif status == 'NEEDS_TWEAK' %}Try building anyway{% else %}Build it{% endif %}
-    </button>
-  </form>
-  {% endif %}
-</section>
-{% endif %}
+<div id="invent-root"
+     data-api-base="{{ api_base }}"
+     data-game-id="{{ game_id }}"
+     data-region-id="{{ region_id or '' }}">
+  <div id="invent-materials"><p class="muted world-panel-loading">Loading…</p></div>
+  <section class="panel">
+    <h2>Propose an invention</h2>
+    <form id="invent-form">
+      <textarea name="idea" rows="4" placeholder="e.g. sewing, smelting, sharpened stones, bone needles, cooking meat" required></textarea>
+      <label>Place in
+        <select name="region_id" id="invent-region-select">
+          <option value="">Loading regions…</option>
+        </select>
+      </label>
+      <button type="submit" class="primary">Interpret idea</button>
+    </form>
+    <div id="invent-error"></div>
+  </section>
+  <div id="invent-result"></div>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='invent.js') }}"></script>
 {% endblock %}

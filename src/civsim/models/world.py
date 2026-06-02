@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from civsim.models.entity import Entity
 from civsim.models.events import EventImpact, GameEvent
@@ -42,6 +42,45 @@ class ClimateState(BaseModel):
     ecosystem_health: float = 0.75
 
 
+class CompoundProvenance(BaseModel):
+    """What was combined when a novel compound was first isolated."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    materials: list[str] = Field(default_factory=list)
+    components: list[str] = Field(default_factory=list)
+    objects: list[str] = Field(default_factory=list)
+    methods: list[str] = Field(default_factory=list)
+    intent: str = ""
+    turn: int = 0
+    source: Literal["lab", "invent"] = "lab"
+    recipe_id: str | None = None
+
+
+class NovelCompound(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    provenance: CompoundProvenance = Field(default_factory=CompoundProvenance)
+
+
+def novel_compound_name(entry: NovelCompound | str) -> str:
+    if isinstance(entry, str):
+        return entry
+    return entry.name
+
+
+class RegionExit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    target_region_id: str
+    description: str = ""
+    discovered: bool = False
+    accessible: bool = False
+
+
 class Region(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -51,7 +90,9 @@ class Region(BaseModel):
     energy_ceiling: float = 0.5
     water_availability: float = 0.5
     absent_materials: list[str] = Field(default_factory=list)
+    always_available: list[str] = Field(default_factory=list)
     deposits: list[MaterialDeposit] = Field(default_factory=list)
+    exits: list[RegionExit] = Field(default_factory=list)
 
 
 class TickResult(BaseModel):
@@ -83,6 +124,22 @@ class GameState(BaseModel):
     event_log: list[GameEvent] = Field(default_factory=list)
     entity_names: dict[str, str] = Field(default_factory=dict)
     material_stocks: dict[str, float] = Field(default_factory=dict)
-    novel_compounds: dict[str, str] = Field(default_factory=dict)
+    novel_compounds: dict[str, NovelCompound] = Field(default_factory=dict)
     surveyed_region_ids: list[str] = Field(default_factory=list)
     known_methods: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_novel_compounds(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        nc = data.get("novel_compounds")
+        if isinstance(nc, dict):
+            migrated: dict[str, object] = {}
+            for cid, val in nc.items():
+                if isinstance(val, str):
+                    migrated[cid] = {"name": val}
+                else:
+                    migrated[cid] = val
+            data = {**data, "novel_compounds": migrated}
+        return data

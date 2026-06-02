@@ -6,7 +6,7 @@ from openai import APIError, OpenAI
 
 from civsim.ai.text_normalize import normalize_invention_text
 from civsim.models.capabilities import IdeaProposal, LabCombinationVerdict
-from civsim.models.world import GameState
+from civsim.models.world import GameState, novel_compound_name
 from civsim.registry.capability_registry import CapabilityRegistry
 
 logger = logging.getLogger(__name__)
@@ -116,7 +116,10 @@ class OpenAIInterpreter:
             "components": fixtures,
             "fixtures": fixtures,
             "known_methods": world.known_methods,
-            "novel_compounds": world.novel_compounds,
+            "novel_compounds": {
+                cid: novel_compound_name(entry)
+                for cid, entry in world.novel_compounds.items()
+            },
             "materials": material_context or {},
             "allowed_capabilities": registry.allowed_keys(world.era),
             "memory": memory_context or [],
@@ -167,7 +170,10 @@ class OpenAIInterpreter:
             "turn": world.turn,
             "path_divergence": world.path_divergence,
             "known_methods": world.known_methods,
-            "novel_compounds": world.novel_compounds,
+            "novel_compounds": {
+                cid: novel_compound_name(entry)
+                for cid, entry in world.novel_compounds.items()
+            },
             "combination": combination,
             "materials_context": material_context or {},
             "allowed_capabilities": registry.allowed_keys(world.era),

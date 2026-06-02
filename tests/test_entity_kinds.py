@@ -64,7 +64,19 @@ def test_material_demand_makes_machine():
     assert "component" in tags
 
 
-def test_stale_object_tag_on_tool_still_component():
+def test_normalize_tags_splits_comma_joined():
+    from civsim.models.entity_kinds import normalize_tags
+
+    assert normalize_tags(["flint,sharp,bone,object"]) == [
+        "flint",
+        "sharp",
+        "bone",
+        "object",
+    ]
+    assert normalize_tags(["hide", "hide,water"]) == ["hide", "water"]
+
+
+def test_malformed_tags_classify_as_component_when_tool_has_io():
     entity = Entity(
         id="x",
         name="Knapped flint",

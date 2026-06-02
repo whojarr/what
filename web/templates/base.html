@@ -10,6 +10,13 @@
   <header>
     <h1><a href="{{ url_for('home') }}">WHAT</a></h1>
     <nav>
+      <label class="graphics-control">
+        <span class="graphics-control-label">Graphics</span>
+        <select id="graphics-level" aria-label="Graphics level">
+          <option value="0">Text</option>
+          <option value="1">AI images</option>
+        </select>
+      </label>
       {% if session.get('game_id') %}
       <a href="{{ url_for('world') }}">Cave</a>
       <a href="{{ url_for('lab') }}">Discover</a>
@@ -22,6 +29,9 @@
     {% block content %}{% endblock %}
   </main>
   <div id="status-bar" class="status-bar" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='api.js') }}"></script>
+  <script src="{{ url_for('static', filename='graphics.js') }}"></script>
+  <script src="{{ url_for('static', filename='display.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   {% block page_scripts %}{% endblock %}
 </body>

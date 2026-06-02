@@ -58,7 +58,21 @@
     }
   });
 
+  window.addEventListener("what-graphics-change", () => {
+    window.location.reload();
+  });
+
   document.querySelectorAll("form").forEach((form) => {
+    if (
+      form.id === "lab-form" ||
+      form.id === "invent-form" ||
+      form.id === "home-form" ||
+      form.id === "history-search-form" ||
+      form.closest("#world-root") ||
+      form.closest("#invent-root")
+    ) {
+      return;
+    }
     form.addEventListener("submit", () => {
       const btn = form.querySelector(
         'button[type="submit"]:not([disabled]), input[type="submit"]:not([disabled])'

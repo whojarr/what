@@ -84,6 +84,8 @@ def test_speculative_mode_allows_experimental_leaps():
 
 
 def test_register_novel_compound():
+    from civsim.models.world import CompoundProvenance
+
     mat_reg = MaterialRegistry.load_for_era("paleolithic", ROOT / "data")
     engine = MaterialEngine(mat_reg)
     world = WorldGenerator().generate(3)
@@ -93,9 +95,19 @@ def test_register_novel_compound():
         "Cave varnish",
         ["chemical", "compound", "varnish"],
         "material.cave_varnish",
+        provenance=CompoundProvenance(
+            materials=["flint", "bone"],
+            components=["natural_fire"],
+            intent="mix pigments",
+            turn=2,
+        ),
     )
     assert registered is not None
     compound_id, feedback = registered
     assert compound_id in world.novel_compounds
+    entry = world.novel_compounds[compound_id]
+    assert entry.name == "Cave varnish"
+    assert entry.provenance.materials == ["flint", "bone"]
+    assert entry.provenance.components == ["natural_fire"]
     assert "Cave varnish" in feedback
     assert world.material_stocks[compound_id] > 0

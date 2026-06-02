@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from civsim.models.entity import EntityDraft
@@ -12,11 +13,13 @@ from civsim.registry.capability_registry import CapabilityRegistry
 from civsim.registry.material_registry import MaterialRegistry
 from civsim.registry.method_registry import MethodRegistry
 from civsim.services.game_service import GameService
+from civsim.services.visual_service import VisualService
 
 load_dotenv()
 
 DATA_DIR = project_root() / "data"
 SAVES_PATH = resolve_data_path("SAVES_PATH", "data/saves")
+IMAGES_PATH = resolve_data_path("IMAGES_PATH", "data/images")
 
 registry = CapabilityRegistry.load_for_era("paleolithic", DATA_DIR)
 material_registry = MaterialRegistry.load_for_era("paleolithic", DATA_DIR)
@@ -28,6 +31,7 @@ game_service = GameService(
     method_registry=method_registry,
     data_dir=DATA_DIR,
 )
+visual_service = VisualService(IMAGES_PATH, game_service)
 
 
 @asynccontextmanager
@@ -69,6 +73,11 @@ class RenameRegionRequest(BaseModel):
     name: str
 
 
+class TravelRequest(BaseModel):
+    target_region_id: str
+    from_region_id: str | None = None
+
+
 class LabCombineRequest(BaseModel):
     region_id: str
     material_ids: list[str] = Field(default_factory=list)
@@ -94,11 +103,31 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/games")
+def list_games():
+    return {"games": game_service.list_saves()}
+
+
 @app.post("/games")
 def create_game(req: CreateGameRequest):
     state = game_service.create_game(req.seed)
     game_service.auto_approve_pending()
     return state.model_dump()
+
+
+@app.get("/games/{game_id}/visuals/{subject_type}/{subject_id}")
+def get_visual(game_id: str, subject_type: str, subject_id: str):
+    if not game_service.load_game(game_id):
+        raise HTTPException(404, "Game not found")
+    path = visual_service.get_or_create_image(game_id, subject_type, subject_id)
+    if not path:
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise HTTPException(
+                503,
+                "OPENAI_API_KEY is required for AI graphics. Set it in .env or use Text graphics.",
+            )
+        raise HTTPException(404, "Visual not found")
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/games/{game_id}")
@@ -154,6 +183,26 @@ def world_objects(game_id: str, region_id: str | None = None):
     result = game_service.get_world_objects(game_id, region_id)
     if not result:
         raise HTTPException(404, "Game or region not found")
+    return result
+
+
+@app.get("/games/{game_id}/entities/{entity_id}")
+def get_entity(game_id: str, entity_id: str):
+    entity = game_service.get_entity(game_id, entity_id)
+    if not entity:
+        raise HTTPException(404, "Entity not found")
+    return entity
+
+
+@app.post("/games/{game_id}/travel")
+def travel_region(game_id: str, req: TravelRequest):
+    result = game_service.travel_to_region(
+        game_id, req.target_region_id, req.from_region_id
+    )
+    if not result:
+        raise HTTPException(404, "Game or region not found")
+    if result.get("error"):
+        raise HTTPException(400, result)
     return result
 
 

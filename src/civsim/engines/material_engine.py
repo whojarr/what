@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 
 from civsim.models.entity import EntityCore
-from civsim.models.world import GameState, MaterialDeposit, Region
+from civsim.models.world import CompoundProvenance, GameState, NovelCompound, novel_compound_name, MaterialDeposit, Region
 from civsim.registry.material_registry import MINING_TAGS, MaterialRegistry, WALL_TAGS
 
 COMPOUND_HINT_TAGS = frozenset(
@@ -139,6 +139,8 @@ class MaterialEngine:
         name: str,
         tags: list[str],
         entity_type: str = "",
+        *,
+        provenance: CompoundProvenance | None = None,
     ) -> tuple[str, str] | None:
         """Record a newly created substance that is not in the era catalog."""
         if entity_type.startswith("material."):
@@ -155,7 +157,10 @@ class MaterialEngine:
             return None
 
         display = name.strip() or compound_id.replace("_", " ").title()
-        state.novel_compounds[compound_id] = display
+        state.novel_compounds[compound_id] = NovelCompound(
+            name=display,
+            provenance=provenance or CompoundProvenance(),
+        )
         state.material_stocks[compound_id] = max(
             0.25, state.material_stocks.get(compound_id, 0.0)
         )
@@ -163,7 +168,7 @@ class MaterialEngine:
 
     def name_for(self, material_id: str, state: GameState | None = None) -> str:
         if state and material_id in state.novel_compounds:
-            return state.novel_compounds[material_id]
+            return novel_compound_name(state.novel_compounds[material_id])
         return self.materials.name_for(material_id)
 
     def is_material_available(
@@ -221,11 +226,11 @@ class MaterialEngine:
                     "stock": stock,
                 }
             )
-        for compound_id, display in sorted(state.novel_compounds.items()):
+        for compound_id, entry in sorted(state.novel_compounds.items()):
             items.append(
                 {
                     "id": compound_id,
-                    "name": display,
+                    "name": novel_compound_name(entry),
                     "abundance": state.material_stocks.get(compound_id, 0.0),
                     "stock": state.material_stocks.get(compound_id, 0.0),
                     "novel": True,

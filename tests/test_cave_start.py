@@ -10,9 +10,14 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_cave_start_state():
     state = WorldGenerator().generate(seed=42)
     assert state.era == "paleolithic"
-    assert len(state.regions) == 1
+    assert len(state.regions) == 2
     region = state.regions[0]
     assert region.id == "cave_chamber"
+    outside = state.regions[1]
+    assert outside.id == "outside_slope"
+    assert "wood" in outside.always_available
+    assert region.exits[0].target_region_id == "outside_slope"
+    assert region.exits[0].discovered is False
     assert state.resources.food < 0.2
     assert state.resources.warmth < 0.25
     assert state.invention_count == 0
