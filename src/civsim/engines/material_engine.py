@@ -7,6 +7,9 @@ from civsim.models.entity import EntityCore
 from civsim.models.world import CompoundProvenance, GameState, NovelCompound, novel_compound_name, MaterialDeposit, Region
 from civsim.registry.material_registry import MINING_TAGS, MaterialRegistry, WALL_TAGS
 
+# Minimum deposit abundance to experiment at the bench (lab_engine.LAB_COST).
+MIN_DEPOSIT_USE = 0.1
+
 COMPOUND_HINT_TAGS = frozenset(
     {
         "chemical",
@@ -36,6 +39,37 @@ class SurveyResult:
 class MaterialEngine:
     def __init__(self, material_registry: MaterialRegistry) -> None:
         self.materials = material_registry
+
+    @staticmethod
+    def region_stocks(state: GameState, region_id: str) -> dict[str, float]:
+        if region_id not in state.region_material_stocks:
+            state.region_material_stocks[region_id] = {}
+        return state.region_material_stocks[region_id]
+
+    @classmethod
+    def stock_at(cls, state: GameState, region_id: str, material_id: str) -> float:
+        return cls.region_stocks(state, region_id).get(material_id, 0.0)
+
+    @classmethod
+    def set_stock(
+        cls, state: GameState, region_id: str, material_id: str, amount: float
+    ) -> None:
+        stocks = cls.region_stocks(state, region_id)
+        if amount <= 0.001:
+            stocks.pop(material_id, None)
+        else:
+            stocks[material_id] = min(1.0, amount)
+
+    @classmethod
+    def add_stock(
+        cls, state: GameState, region_id: str, material_id: str, delta: float
+    ) -> None:
+        cls.set_stock(
+            state,
+            region_id,
+            material_id,
+            cls.stock_at(state, region_id, material_id) + delta,
+        )
 
     def survey_region(self, state: GameState, region: Region) -> SurveyResult:
         result = SurveyResult()
@@ -140,6 +174,7 @@ class MaterialEngine:
         tags: list[str],
         entity_type: str = "",
         *,
+        region_id: str,
         provenance: CompoundProvenance | None = None,
     ) -> tuple[str, str] | None:
         """Record a newly created substance that is not in the era catalog."""
@@ -161,8 +196,11 @@ class MaterialEngine:
             name=display,
             provenance=provenance or CompoundProvenance(),
         )
-        state.material_stocks[compound_id] = max(
-            0.25, state.material_stocks.get(compound_id, 0.0)
+        self.set_stock(
+            state,
+            region_id,
+            compound_id,
+            max(0.25, self.stock_at(state, region_id, compound_id)),
         )
         return compound_id, f"You isolated a new substance: {display}."
 
@@ -177,19 +215,97 @@ class MaterialEngine:
         region: Region,
         state: GameState,
     ) -> bool:
-        if self.materials.is_implicit(material_id):
+        stock = self.stock_at(state, region.id, material_id)
+        if material_id in region.always_available:
             return True
-        if material_id in state.novel_compounds:
-            return state.material_stocks.get(material_id, 0.0) > 0.02
         if material_id in region.absent_materials:
-            return False
-        stock = state.material_stocks.get(material_id, 0.0)
-        if stock > 0.05:
+            return stock > 0.02
+        if material_id in state.novel_compounds:
+            return stock > 0.02
+        if stock > 0.02:
             return True
         for deposit in region.deposits:
             if deposit.material_id == material_id and deposit.discovered:
-                return deposit.abundance > 0.05
+                return deposit.abundance >= MIN_DEPOSIT_USE or stock > 0.02
         return False
+
+    _BASELINE_LAB_SOURCES: dict[str, str] = {
+        "bone": "scavenging",
+        "hide": "hunting",
+        "dung": "fuel",
+        "wood": "foraging",
+        "plant_fiber": "gathering",
+        "clay": "earth",
+    }
+
+    def list_lab_materials(self, region: Region, state: GameState) -> list[dict]:
+        """Materials the discovery bench can offer in this region."""
+        items: list[dict] = []
+        seen: set[str] = set()
+        regional = self.region_stocks(state, region.id)
+
+        for mat_id in region.always_available:
+            seen.add(mat_id)
+            items.append(
+                {
+                    "id": mat_id,
+                    "name": self.materials.name_for(mat_id),
+                    "source": self._BASELINE_LAB_SOURCES.get(mat_id, "nearby"),
+                    "stock": regional.get(mat_id, 0.0),
+                }
+            )
+
+        for deposit in region.deposits:
+            if not deposit.discovered or deposit.material_id in seen:
+                continue
+            if not self.is_material_available(deposit.material_id, region, state):
+                continue
+            stock = regional.get(deposit.material_id, 0.0)
+            seen.add(deposit.material_id)
+            items.append(
+                {
+                    "id": deposit.material_id,
+                    "name": self.materials.name_for(deposit.material_id),
+                    "source": "deposit",
+                    "stock": stock,
+                    "abundance": deposit.abundance,
+                }
+            )
+
+        for compound_id, entry in sorted(state.novel_compounds.items()):
+            if compound_id in seen:
+                continue
+            stock = regional.get(compound_id, 0.0)
+            if stock <= 0.02:
+                continue
+            seen.add(compound_id)
+            items.append(
+                {
+                    "id": compound_id,
+                    "name": novel_compound_name(entry),
+                    "source": "discovered",
+                    "stock": stock,
+                }
+            )
+
+        for mat_id, stock in sorted(regional.items()):
+            if mat_id in seen or stock <= 0.02:
+                continue
+            if not self.is_material_available(mat_id, region, state):
+                continue
+            seen.add(mat_id)
+            source = "hauled" if mat_id in region.absent_materials else "stored"
+            items.append(
+                {
+                    "id": mat_id,
+                    "name": self.materials.name_for(mat_id),
+                    "source": source,
+                    "stock": stock,
+                }
+            )
+
+        items.sort(key=lambda item: item["name"].lower())
+        return items
 
     def is_material_discovered(self, material_id: str, region: Region, state: GameState | None = None) -> bool:
         if state and material_id in state.novel_compounds:
@@ -217,7 +333,7 @@ class MaterialEngine:
             if not deposit.discovered or deposit.material_id in seen:
                 continue
             seen.add(deposit.material_id)
-            stock = state.material_stocks.get(deposit.material_id, 0.0)
+            stock = self.stock_at(state, region.id, deposit.material_id)
             items.append(
                 {
                     "id": deposit.material_id,
@@ -227,12 +343,13 @@ class MaterialEngine:
                 }
             )
         for compound_id, entry in sorted(state.novel_compounds.items()):
+            stock = self.stock_at(state, region.id, compound_id)
             items.append(
                 {
                     "id": compound_id,
                     "name": novel_compound_name(entry),
-                    "abundance": state.material_stocks.get(compound_id, 0.0),
-                    "stock": state.material_stocks.get(compound_id, 0.0),
+                    "abundance": stock,
+                    "stock": stock,
                     "novel": True,
                 }
             )
@@ -270,8 +387,7 @@ class MaterialEngine:
                 mat_id = deposit.material_id
                 taken = min(harvest_rate, deposit.abundance * 0.08)
                 deposit.abundance = max(0.0, deposit.abundance - taken * 0.5)
-                current = state.material_stocks.get(mat_id, 0.0)
-                state.material_stocks[mat_id] = min(1.0, current + taken)
+                self.add_stock(state, core.region_id, mat_id, taken)
 
         self._aggregate_materials_meter(state)
         return feedback
@@ -288,9 +404,9 @@ class MaterialEngine:
             required = self.materials.required_materials(core.tags)
             if required:
                 for mat_id in required:
-                    stock = state.material_stocks.get(mat_id, 0.0)
+                    stock = self.stock_at(state, core.region_id, mat_id)
                     if stock >= demand:
-                        state.material_stocks[mat_id] = stock - demand
+                        self.set_stock(state, core.region_id, mat_id, stock - demand)
                         demand = 0.0
                         break
             if demand > 0:
@@ -299,14 +415,17 @@ class MaterialEngine:
         self._aggregate_materials_meter(state)
 
     def _aggregate_materials_meter(self, state: GameState) -> None:
-        if not state.material_stocks:
+        combined: dict[str, float] = {}
+        for stocks in state.region_material_stocks.values():
+            for mat_id, stock in stocks.items():
+                if stock > 0:
+                    combined[mat_id] = combined.get(mat_id, 0.0) + stock
+        if not combined:
             return
         region = state.regions[0] if state.regions else None
         weighted = 0.0
         weight_sum = 0.0
-        for mat_id, stock in state.material_stocks.items():
-            if stock <= 0:
-                continue
+        for mat_id, stock in combined.items():
             abundance = 1.0
             if region:
                 abundance = max(abundance, self.deposit_abundance(mat_id, region))

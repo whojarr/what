@@ -53,6 +53,7 @@ app.add_middleware(
 
 class CreateGameRequest(BaseModel):
     seed: int = 42
+    name: str | None = None
 
 
 class InterpretRequest(BaseModel):
@@ -110,9 +111,16 @@ def list_games():
 
 @app.post("/games")
 def create_game(req: CreateGameRequest):
-    state = game_service.create_game(req.seed)
+    state = game_service.create_game(req.seed, name=req.name)
     game_service.auto_approve_pending()
     return state.model_dump()
+
+
+@app.delete("/games/{game_id}")
+def delete_game(game_id: str):
+    if not game_service.delete_game(game_id):
+        raise HTTPException(404, "Game not found")
+    return {"ok": True}
 
 
 @app.get("/games/{game_id}/visuals/{subject_type}/{subject_id}")

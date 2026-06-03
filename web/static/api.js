@@ -82,6 +82,24 @@
     return data;
   }
 
+  async function apiDelete(apiBase, path) {
+    const res = await fetch(`${apiBase}${path}`, { method: "DELETE" });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (_err) {
+      data = text;
+    }
+    if (!res.ok) {
+      const err = new Error(typeof data === "string" ? data : `HTTP ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
   function apiErrorMessage(err) {
     const detail = err?.data?.detail;
     if (typeof detail === "string") return detail;
@@ -94,14 +112,30 @@
     return err?.message || "Request failed";
   }
 
-  function getRegionId(root) {
-    return sessionStorage.getItem(REGION_KEY) || root?.dataset?.regionId || "";
+  function syncRegionDatasets(regionId) {
+    document.querySelectorAll("[data-game-id]").forEach((el) => {
+      el.dataset.regionId = regionId;
+    });
   }
 
-  function setRegionId(regionId, root) {
-    if (regionId) {
-      sessionStorage.setItem(REGION_KEY, regionId);
-      if (root) root.dataset.regionId = regionId;
+  function getRegionId() {
+    return (
+      sessionStorage.getItem(REGION_KEY) ||
+      document.body?.dataset?.regionId ||
+      ""
+    );
+  }
+
+  function setRegionId(regionId, options) {
+    if (!regionId) return;
+    const notify = options?.notify !== false;
+    const prev = sessionStorage.getItem(REGION_KEY);
+    sessionStorage.setItem(REGION_KEY, regionId);
+    syncRegionDatasets(regionId);
+    if (notify && prev !== regionId) {
+      window.dispatchEvent(
+        new CustomEvent("what-region-change", { detail: { regionId } })
+      );
     }
   }
 
@@ -115,6 +149,10 @@
     const apiBase = (config.apiBase || root?.dataset?.apiBase || "").replace(/\/$/, "");
     const gameId = config.gameId || root?.dataset?.gameId;
 
+    if (root?.dataset?.regionId && !getRegionId()) {
+      setRegionId(root.dataset.regionId, { notify: false });
+    }
+
     const gid = () => {
       if (!gameId) throw new Error("Missing game id");
       return gameId;
@@ -126,15 +164,21 @@
       root,
       get: (path) => apiGet(apiBase, path),
       post: (path, body) => apiPost(apiBase, path, body),
-      getRegionId: () => getRegionId(root),
-      setRegionId: (regionId) => setRegionId(regionId, root),
+      getRegionId,
+      setRegionId,
 
       listGames() {
         return apiGet(apiBase, "/games");
       },
 
-      createGame(seed) {
-        return apiPost(apiBase, "/games", { seed });
+      deleteGame(id) {
+        return apiDelete(apiBase, `/games/${id}`);
+      },
+
+      createGame(seed, name) {
+        const body = { seed };
+        if (name) body.name = name;
+        return apiPost(apiBase, "/games", body);
       },
 
       getGame() {
@@ -235,6 +279,15 @@
     return res.json();
   }
 
+  async function clearFlaskSession() {
+    const res = await fetch("/session", {
+      method: "DELETE",
+      credentials: "same-origin",
+    });
+    if (!res.ok) throw new Error("Could not clear session");
+    return res.json();
+  }
+
   window.What = {
     esc,
     pct,
@@ -245,10 +298,12 @@
     objectBadge,
     apiGet,
     apiPost,
+    apiDelete,
     apiErrorMessage,
     getRegionId,
     setRegionId,
     createClient,
     setFlaskSession,
+    clearFlaskSession,
   };
 })();

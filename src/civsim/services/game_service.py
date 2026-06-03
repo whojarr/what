@@ -26,10 +26,15 @@ from civsim.models.entity_kinds import (
     classify_entity_tags,
     classification_reason,
     component_display,
+    entity_available_at_lab,
     entity_kind,
     is_component,
     is_object,
+    lab_accessible_region_ids,
+    material_travel_capacity,
     object_display,
+    partition_for_travel,
+    transfer_materials_on_travel,
 )
 from civsim.models.entity import Entity, EntityDraft
 from civsim.models.world import (
@@ -71,6 +76,7 @@ class GameService:
         self.lab_engine = LabEngine.load_for_era(
             DEFAULT_ERA, self.data_dir, self.material_registry
         )
+        self.lab_engine.material_engine = self.material_engine
         self.capability_engine = CapabilityEngine(registry)
         self.constraint_engine = ConstraintEngine(self.material_engine)
         self.event_system = EventSystem(registry)
@@ -83,8 +89,16 @@ class GameService:
             self._interpreter = OpenAIInterpreter()
         return self._interpreter
 
-    def create_game(self, seed: int = 42) -> GameState:
+    @staticmethod
+    def normalize_world_name(name: str | None) -> str:
+        cleaned = (name or "").strip()
+        if not cleaned:
+            return "Untitled world"
+        return cleaned[:80]
+
+    def create_game(self, seed: int = 42, name: str | None = None) -> GameState:
         state = self.world_gen.generate(seed)
+        state.name = self.normalize_world_name(name)
         self.method_engine.seed_starter_methods(state)
         self._save(state)
         return state
@@ -113,6 +127,7 @@ class GameService:
             summaries.append(
                 {
                     "id": state.id,
+                    "name": state.name,
                     "turn": state.turn,
                     "rng_seed": state.rng_seed,
                     "era": state.era,
@@ -123,6 +138,16 @@ class GameService:
             )
         summaries.sort(key=lambda s: s["saved_at"], reverse=True)
         return summaries
+
+    def delete_game(self, game_id: str) -> bool:
+        path = self.saves_path / f"{game_id}.json"
+        if not path.exists():
+            return False
+        path.unlink()
+        records = getattr(self.memory, "_records", None)
+        if records is not None:
+            records.pop(game_id, None)
+        return True
 
     def resolve_visual_subject(
         self, game_id: str, subject_type: str, subject_id: str
@@ -341,6 +366,7 @@ class GameService:
             draft.name,
             entity.tags,
             entity.type,
+            region_id=draft.region_id,
             provenance=self._build_compound_provenance(state, source="invent"),
         )
         if compound_fb:
@@ -486,22 +512,47 @@ class GameService:
         )
         if not region:
             return None
-        materials = self.lab_engine.list_selectable_materials(region, state)
+        materials = self.material_engine.list_lab_materials(region, state)
+        accessible = lab_accessible_region_ids(region)
+        region_names = {r.id: r.name for r in state.regions}
         components = []
         objects = []
         for e in state.entities:
-            if not e.operational:
+            if not entity_available_at_lab(e, region, accessible):
                 continue
             if is_component(e):
-                components.append(
-                    {"id": e.id, "name": e.name, "type": e.type, "tags": e.tags, **component_display(e)}
-                )
+                item = {
+                    "id": e.id,
+                    "name": e.name,
+                    "type": e.type,
+                    "tags": e.tags,
+                    **component_display(e),
+                }
+                if e.region_id != region.id:
+                    item["region_id"] = e.region_id
+                    item["region_name"] = region_names.get(e.region_id, e.region_id)
+                    item["hint"] = (
+                        f"{item.get('hint', '')} · In {item['region_name']}"
+                    ).strip(" · ")
+                components.append(item)
             elif is_object(e):
-                objects.append(
-                    {"id": e.id, "name": e.name, "type": e.type, "tags": e.tags, **object_display(e)}
-                )
+                item = {
+                    "id": e.id,
+                    "name": e.name,
+                    "type": e.type,
+                    "tags": e.tags,
+                    **object_display(e),
+                }
+                if e.region_id != region.id:
+                    item["region_id"] = e.region_id
+                    item["region_name"] = region_names.get(e.region_id, e.region_id)
+                    item["hint"] = (
+                        f"{item.get('hint', '')} · In {item['region_name']}"
+                    ).strip(" · ")
+                objects.append(item)
         return {
             "region_id": region.id,
+            "region_name": region.name,
             "materials": materials,
             "components": self._collapse_named_items(components),
             "objects": self._collapse_named_items(objects),
@@ -657,10 +708,16 @@ class GameService:
         tags: list[str],
         entity_type: str,
         *,
+        region_id: str,
         provenance: CompoundProvenance | None = None,
     ) -> str | None:
         registered = self.material_engine.register_novel_compound(
-            state, name, tags, entity_type, provenance=provenance
+            state,
+            name,
+            tags,
+            entity_type,
+            region_id=region_id,
+            provenance=provenance,
         )
         if not registered:
             return None
@@ -818,6 +875,7 @@ class GameService:
             proposal.player_name,
             proposal.tags,
             proposal.type,
+            region_id=region.id,
             provenance=self._build_compound_provenance(
                 state,
                 source="lab",
@@ -911,13 +969,74 @@ class GameService:
             return_passage.discovered = True
             return_passage.accessible = True
 
+        carried_entities, left_behind = partition_for_travel(state.entities, from_region.id)
+        had_stored_materials = any(
+            amt > 0.02
+            for amt in state.region_material_stocks.get(from_region.id, {}).values()
+        )
+        moved_materials = transfer_materials_on_travel(
+            state.region_material_stocks,
+            from_region.id,
+            target.id,
+            set(target.absent_materials),
+            carried_entities,
+        )
+        materials_hauled: list[str] = []
+        for mat_id, _amount in moved_materials:
+            materials_hauled.append(self.material_registry.name_for(mat_id))
+
+        carried: list[str] = []
+        for entity in carried_entities:
+            entity.region_id = target.id
+            carried.append(entity.name)
+
+        feedback = [f"You reach {target.name} through {passage.name.lower()}."]
+        if carried:
+            if len(carried) == 1:
+                feedback.append(f"You bring {carried[0]} with you.")
+            elif len(carried) <= 4:
+                feedback.append(f"You bring {', '.join(carried)} with you.")
+            else:
+                feedback.append(
+                    f"You bring {', '.join(carried[:3])}, and {len(carried) - 3} more with you."
+                )
+        if left_behind:
+            if len(left_behind) == 1:
+                feedback.append(f"You leave {left_behind[0].name} behind — no room to carry more.")
+            elif len(left_behind) <= 3:
+                feedback.append(
+                    f"You leave {', '.join(e.name for e in left_behind)} behind — pack full."
+                )
+            else:
+                feedback.append(
+                    f"You leave {left_behind[0].name}, {left_behind[1].name}, "
+                    f"and {len(left_behind) - 2} more behind — pack full."
+                )
+        if materials_hauled:
+            if len(materials_hauled) == 1:
+                feedback.append(f"You haul {materials_hauled[0]} in your pack.")
+            elif len(materials_hauled) <= 3:
+                feedback.append(f"You haul {', '.join(materials_hauled)} in your pack.")
+            else:
+                feedback.append(
+                    f"You haul {', '.join(materials_hauled[:2])}, "
+                    f"and {len(materials_hauled) - 2} more in your pack."
+                )
+        elif had_stored_materials and material_travel_capacity(carried_entities, from_region.id) <= 0.001:
+            feedback.append(
+                "Bulk materials stay behind — craft a pack or basket to haul them."
+            )
+
         self._save(state)
         return {
             "region_id": target.id,
             "region_name": target.name,
             "from_region_id": from_region.id,
             "from_region_name": from_region.name,
-            "feedback": [f"You reach {target.name} through {passage.name.lower()}."],
+            "carried": carried,
+            "left_behind": [e.name for e in left_behind],
+            "materials_hauled": materials_hauled,
+            "feedback": feedback,
         }
 
     _BASELINE_MATERIAL_META: dict[str, dict[str, str]] = {
@@ -1061,6 +1180,8 @@ class GameService:
             if not deposit.discovered:
                 continue
             mid = deposit.material_id
+            if not self.material_engine.is_material_available(mid, region, state):
+                continue
             depth_hint = (
                 "Survey found this in the cave walls."
                 if deposit.depth == "surface"
@@ -1100,6 +1221,7 @@ class GameService:
         region = self._world_region(state, region_id)
         if not region:
             return None
+        regional = self.material_engine.region_stocks(state, region.id)
         stocks = [
             self._material_registry_detail(
                 mat_id,
@@ -1112,12 +1234,13 @@ class GameService:
                     else "Well stocked for discovery bench work."
                 ),
             )
-            for mat_id, stock in sorted(state.material_stocks.items())
+            for mat_id, stock in sorted(regional.items())
             if stock > 0.01
         ]
         compounds = [
             self._compound_public(state, cid, entry)
             for cid, entry in sorted(state.novel_compounds.items())
+            if self.material_engine.stock_at(state, region.id, cid) > 0.01
         ]
         return {
             "region_id": region.id,

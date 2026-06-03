@@ -5,7 +5,12 @@
   <h2>You wake in a cave</h2>
   <p>Fire and water are your first <strong>components</strong> (machines). Combine <strong>materials</strong> at Discover to make <strong>objects</strong> — seats, tables, shelters — or new components (tools).</p>
   <form id="home-form" data-api-base="{{ api_base }}">
-    <label>World seed <input type="number" name="seed" value="42"></label>
+    <label>World name
+      <input type="text" name="world_name" maxlength="80" placeholder="e.g. Misty Hollow" required autocomplete="off">
+    </label>
+    <label>World seed
+      <input type="number" name="seed" value="42">
+    </label>
     <button type="submit" class="primary">Enter the cave</button>
   </form>
   <p id="home-error" class="error" hidden></p>

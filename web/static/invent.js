@@ -9,21 +9,9 @@
   const materialsEl = document.getElementById("invent-materials");
   const resultEl = document.getElementById("invent-result");
   const errorEl = document.getElementById("invent-error");
-  const regionSelect = document.getElementById("invent-region-select");
-
   let lastResult = null;
-  let regions = [];
 
-  function renderRegionOptions(selectedId) {
-    regionSelect.innerHTML = regions
-      .map(
-        (r) =>
-          `<option value="${esc(r.id)}"${r.id === selectedId ? " selected" : ""}>${esc(r.name)}</option>`
-      )
-      .join("");
-  }
-
-  function renderPlaceForm(result, regionId) {
+  function renderPlaceForm(result) {
     const status = result.constraint?.status;
     if (status === "BLOCKED") return "";
 
@@ -51,23 +39,17 @@
       <section class="panel feedback-recent">
         <h3>${esc(result.proposal?.player_name || "Proposal")}</h3>
         ${renderConstraintBlock(result)}
-        ${renderPlaceForm(result, regionSelect.value)}
+        ${renderPlaceForm(result)}
       </section>`;
   }
 
-  async function loadMaterials() {
-    const regionId = client.getRegionId();
-    const [absent, available, stocks, overview, game] = await Promise.all([
-      client.worldMaterialsAbsent(regionId),
-      client.worldMaterialsAvailable(regionId),
-      client.worldMaterialsStocks(regionId),
-      client.worldOverview(regionId),
-      client.getGame(),
+  async function loadMaterials(regionId) {
+    const rid = regionId || client.getRegionId();
+    const [absent, available, stocks] = await Promise.all([
+      client.worldMaterialsAbsent(rid),
+      client.worldMaterialsAvailable(rid),
+      client.worldMaterialsStocks(rid),
     ]);
-    regions = game.regions || [];
-    const activeRegion = overview.region?.id || regions[0]?.id || regionId;
-    client.setRegionId(activeRegion);
-    renderRegionOptions(activeRegion);
     materialsEl.innerHTML = renderMaterialsPanel(absent, available, stocks, {
       heading: "What you have to work with",
       linkPanels: false,
@@ -76,10 +58,8 @@
 
   async function handleInterpret(form) {
     const idea = form.querySelector('[name="idea"]').value.trim();
-    const regionId = form.querySelector('[name="region_id"]').value;
+    const regionId = client.getRegionId();
     if (!idea) return;
-
-    client.setRegionId(regionId);
     errorEl.innerHTML = "";
     setStatus("Interpreting…");
     document.body.classList.add("is-waiting");
@@ -101,7 +81,7 @@
 
   async function handlePlace() {
     if (!lastResult?.normalized) return;
-    const regionId = regionSelect.value || client.getRegionId();
+    const regionId = client.getRegionId();
     const name =
       document.getElementById("invent-place-name")?.value ||
       lastResult.proposal?.player_name ||
@@ -153,8 +133,12 @@
     }
   });
 
-  regionSelect.addEventListener("change", () => {
-    client.setRegionId(regionSelect.value);
+  document.addEventListener("what-region-change", (event) => {
+    const regionId = event.detail?.regionId;
+    if (!regionId) return;
+    lastResult = null;
+    renderResult(null);
+    loadMaterials(regionId);
   });
 
   async function init() {

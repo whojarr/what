@@ -20,8 +20,23 @@
     </div>
     <div id="lab-result-slot"></div>
   </div>
+
+  <div id="lab-side-panel" class="world-side-panel" aria-hidden="true">
+    <div class="world-side-panel-backdrop"></div>
+    <aside class="world-side-panel-drawer" role="dialog" aria-modal="true" aria-labelledby="lab-panel-title">
+      <header class="world-side-panel-head">
+        <div class="world-side-panel-nav">
+          <h2 id="lab-panel-title" class="world-side-panel-title"></h2>
+        </div>
+        <button type="button" class="world-side-panel-close" aria-label="Close">×</button>
+      </header>
+      <div class="world-side-panel-body"></div>
+    </aside>
+  </div>
 </div>
 {% endblock %}
 {% block page_scripts %}
+<script src="{{ url_for('static', filename='item-detail.js') }}"></script>
+<script src="{{ url_for('static', filename='side-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='lab.js') }}"></script>
 {% endblock %}

@@ -96,6 +96,21 @@ def test_roasted_ore_needs_fire_not_flint(tmp_path):
     assert "roasted" in with_fire["proposal"]["player_name"].lower()
 
 
+def test_lab_options_includes_cave_natural_from_connected_region(tmp_path):
+    service = _service(tmp_path)
+    state = service.create_game(seed=11)
+    cave_id = state.regions[0].id
+    outside_id = state.regions[1].id
+    service.survey_region(state.id, cave_id)
+    service.travel_to_region(state.id, outside_id, cave_id)
+
+    options = service.get_lab_options(state.id, outside_id)
+    assert options is not None
+    ids = {c["id"] for c in options["components"]}
+    assert "natural_fire" in ids
+    assert "natural_spring" in ids
+
+
 def test_lab_options_lists_materials(tmp_path):
     service = _service(tmp_path)
     state = service.create_game(seed=42)
@@ -252,3 +267,89 @@ def test_placed_invention_becomes_component(tmp_path):
     options = service.get_lab_options(state.id)
     ids = {c["id"] for c in options["components"]}
     assert entity.id in ids
+
+
+def test_lab_rejects_component_left_in_other_region(tmp_path):
+    service = _service(tmp_path)
+    state = service.create_game(seed=11)
+    cave_id = state.regions[0].id
+    outside_id = state.regions[1].id
+    from civsim.models.entity import Entity
+
+    state.entities.extend(
+        [
+            Entity(
+                id="tool_a",
+                name="Knapped flint",
+                type="tool.flint_knapped",
+                tags=["component", "flint"],
+                capabilities={"tool_craft": 0.65},
+                region_id=cave_id,
+            ),
+            Entity(
+                id="grinder_1",
+                name="Grinding stone",
+                type="tool.grinder",
+                tags=["component", "flint", "stone"],
+                capabilities={"tool_craft": 0.5, "food_output": 0.2},
+                region_id=cave_id,
+            ),
+        ]
+    )
+    service._save(state)
+    service.survey_region(state.id, cave_id)
+    service.travel_to_region(state.id, outside_id, cave_id)
+
+    result = service.combine_in_lab(
+        state.id,
+        outside_id,
+        ["wood"],
+        component_ids=["grinder_1"],
+    )
+    assert result is not None
+    assert "error" in result
+    assert "Grinding stone" in result["error"]
+
+
+def test_lab_carry_pack_recipe(tmp_path):
+    service = _service(tmp_path)
+    state = service.create_game(seed=11)
+    cave_id = state.regions[0].id
+    state.region_material_stocks[cave_id] = {"plant_fiber": 0.4}
+    service._save(state)
+
+    result = service.combine_in_lab(
+        state.id,
+        cave_id,
+        ["hide", "plant_fiber"],
+    )
+    assert result is not None
+    assert result.get("error") is None
+    assert result["recipe_match"] is True
+    assert "pack" in result["proposal"]["player_name"].lower()
+    service = _service(tmp_path)
+    state = service.create_game(seed=42)
+    region = state.regions[0]
+    service._register_novel_compound(
+        state,
+        "Metal Bar",
+        ["metal", "compound"],
+        "material.metal_bar",
+        region_id=region.id,
+    )
+    service._save(state)
+
+    options = service.get_lab_options(state.id)
+    mat_ids = {m["id"] for m in options["materials"]}
+    assert "metal_bar" in mat_ids
+
+    result = service.combine_in_lab(
+        state.id,
+        region.id,
+        ["metal_bar", "bone"],
+        component_ids=["natural_fire"],
+        intent="pick axe",
+    )
+    assert result is not None
+    assert "error" not in result or "Unknown material" not in result.get("error", "")
+    assert "Unknown material: metal_bar" not in (result.get("errors") or [])

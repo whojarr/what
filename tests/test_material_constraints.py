@@ -95,6 +95,7 @@ def test_register_novel_compound():
         "Cave varnish",
         ["chemical", "compound", "varnish"],
         "material.cave_varnish",
+        region_id=world.regions[0].id,
         provenance=CompoundProvenance(
             materials=["flint", "bone"],
             components=["natural_fire"],
@@ -110,4 +111,4 @@ def test_register_novel_compound():
     assert entry.provenance.materials == ["flint", "bone"]
     assert entry.provenance.components == ["natural_fire"]
     assert "Cave varnish" in feedback
-    assert world.material_stocks[compound_id] > 0
+    assert engine.stock_at(world, world.regions[0].id, compound_id) > 0

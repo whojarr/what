@@ -152,3 +152,21 @@ recipes:
       warmth_output: 0.45
       tool_craft: 0.1
     feedback: "Dried dung and bone char smolder — foul, but they burn."
+
+  - materials: [hide, plant_fiber]
+    kind: object
+    player_name: Hide carry pack
+    type: object.carry_pack
+    tags: [object, hide, garment]
+    capabilities:
+      storage: 0.35
+    feedback: "Hide folded and lashed with fiber — room to haul tools and goods between places."
+
+  - materials: [plant_fiber, wood]
+    kind: object
+    player_name: Woven basket
+    type: object.woven_basket
+    tags: [object, plant_fiber, furniture]
+    capabilities:
+      storage: 0.25
+    feedback: "Twisted fiber on a wood frame — a basket for carrying supplies on the move."

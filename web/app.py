@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, redirect, render_template, request, send_from_directory, session, url_for
 
 load_dotenv()
 
@@ -13,6 +13,14 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
 PREVIEW_LIMIT = 8
 
 
+@app.context_processor
+def inject_game_context():
+    return {
+        "api_base": API_BASE,
+        "game_id": session.get("game_id"),
+    }
+
+
 def _game_id_or_redirect():
     game_id = session.get("game_id")
     if not game_id:
@@ -20,13 +28,26 @@ def _game_id_or_redirect():
     return game_id, None
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "favicon.svg",
+        mimetype="image/svg+xml",
+    )
+
+
 @app.route("/")
 def home():
     return render_template("home.html", api_base=API_BASE)
 
 
-@app.route("/session", methods=["POST"])
+@app.route("/session", methods=["POST", "DELETE"])
 def set_session():
+    if request.method == "DELETE":
+        session.pop("game_id", None)
+        session.pop("last_region_id", None)
+        return {"ok": True}
     data = request.get_json(silent=True) or {}
     game_id = data.get("game_id")
     if not game_id:
@@ -41,8 +62,9 @@ def start_game():
     import httpx
 
     seed = int(request.form.get("seed", 42))
+    world_name = (request.form.get("world_name") or "").strip() or None
     with httpx.Client(base_url=API_BASE, timeout=60.0) as client:
-        r = client.post("/games", json={"seed": seed})
+        r = client.post("/games", json={"seed": seed, "name": world_name})
         r.raise_for_status()
         game = r.json()
     session["game_id"] = game["id"]

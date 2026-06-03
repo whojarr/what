@@ -27,6 +27,7 @@ header {
 header h1 { margin: 0; font-size: 1.25rem; }
 header a { color: var(--text); text-decoration: none; }
 nav a { margin-left: 1rem; color: var(--muted); }
+.region-control,
 .graphics-control {
   display: inline-flex;
   align-items: center;
@@ -35,6 +36,7 @@ nav a { margin-left: 1rem; color: var(--muted); }
   font-size: 0.85rem;
   color: var(--muted);
 }
+.region-control select,
 .graphics-control select {
   background: #243044;
   border: 1px solid #3a4a60;
@@ -87,6 +89,19 @@ main.main-wide {
   margin-bottom: 1.5rem;
 }
 .hero p { color: var(--muted); }
+#home-form { display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start; }
+#home-form label { display: flex; flex-direction: column; gap: 0.35rem; }
+#home-form input[type="text"],
+#home-form input[type="number"] {
+  background: #1a2332;
+  border: 1px solid #3a4a60;
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  min-width: 14rem;
+}
+#home-form input[type="text"] { min-width: 18rem; max-width: 100%; }
+.save-row-region { font-size: 0.9rem; }
 .save-list { list-style: none; margin: 0; padding: 0; }
 .save-row {
   display: flex;
@@ -101,6 +116,13 @@ main.main-wide {
 .save-row-main { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .save-row-meta { font-size: 0.9rem; }
 .save-row-when { font-size: 0.85rem; }
+.save-row-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+button.save-delete {
+  background: transparent;
+  color: var(--muted);
+  padding: 0.6rem 0.75rem;
+}
+button.save-delete:hover:not(:disabled) { color: #e88; }
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .stat span { display: block; font-size: 0.85rem; color: var(--muted); }
 meter { width: 100%; height: 8px; }
@@ -196,12 +218,50 @@ textarea, input, select {
 .status-BLOCKED { color: var(--danger); }
 .cap-row { display: grid; grid-template-columns: 140px 1fr 50px; gap: 0.5rem; align-items: center; margin: 0.25rem 0; }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
-.pick-item { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; background: #243044; padding: 0.6rem 0.75rem; border-radius: 6px; cursor: pointer; }
-.pick-item input { width: auto; margin: 0; align-self: start; margin-top: 0.15rem; }
-.pick-item-tall { align-items: flex-start; }
-.pick-item-body { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; }
+.pick-item { display: flex; gap: 0.35rem; align-items: flex-start; background: #243044; padding: 0.6rem 0.75rem; border-radius: 6px; }
+.pick-item-check { display: flex; align-items: flex-start; padding-top: 0.15rem; cursor: pointer; flex-shrink: 0; }
+.pick-item-check input { width: auto; margin: 0; }
+.pick-item-info {
+  display: flex;
+  flex: 1;
+  gap: 0.35rem;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.pick-item-info:hover,
+.pick-item-info:focus-visible {
+  outline: 1px solid var(--accent, #6b9fff);
+  outline-offset: 2px;
+}
+.pick-item-tall .pick-item-info { align-items: flex-start; }
+.pick-item-body { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; min-width: 0; }
 .pick-hint { font-size: 0.85rem; line-height: 1.35; }
 .pick-meta { font-size: 0.8rem; }
+.method-pill { display: inline-flex; align-items: center; gap: 0.35rem; }
+.method-detail-btn {
+  margin-left: 0.15rem;
+  padding: 0 0.35rem;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.method-detail-btn:hover,
+.method-detail-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.16);
+  outline: 1px solid var(--accent, #6b9fff);
+}
 
 /* Discovery bench — wide layout */
 .lab-page-grid {
@@ -216,6 +276,7 @@ textarea, input, select {
 .lab-header { margin-bottom: 1rem; padding: 1rem 1.25rem; }
 .lab-header h2 { margin: 0; }
 .lab-lede { margin: 0.35rem 0 0; font-size: 0.9rem; }
+.lab-region { margin: 0 0 0.75rem; font-size: 0.9rem; }
 .lab-workspace { padding: 1rem 1.25rem; margin-bottom: 0; }
 .lab-section-title {
   margin: 0 0 0.5rem;

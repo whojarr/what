@@ -6,8 +6,8 @@ from pathlib import Path
 import yaml
 
 from civsim.models.capabilities import IdeaProposal
-from civsim.models.entity_kinds import classify_entity_tags
-from civsim.models.world import novel_compound_name, Region
+from civsim.models.entity_kinds import classify_entity_tags, entity_available_at_lab
+from civsim.models.world import GameState, novel_compound_name, Region
 from civsim.registry.material_registry import MaterialRegistry
 
 IMPLICIT_MATERIALS = frozenset({"bone", "hide", "dung"})
@@ -39,8 +39,10 @@ class LabEngine:
         self,
         material_registry: MaterialRegistry,
         recipes_path: Path | None = None,
+        material_engine: MaterialEngine | None = None,
     ) -> None:
         self.materials = material_registry
+        self.material_engine = material_engine
         self.recipes = self._load_recipes(recipes_path)
 
     def _load_recipes(self, path: Path | None) -> list[LabRecipe]:
@@ -120,6 +122,14 @@ class LabEngine:
             return True
         return False
 
+    def _is_known_material(self, mat_id: str, state: GameState) -> bool:
+        return mat_id in state.novel_compounds or self.materials.get(mat_id) is not None
+
+    def _material_name(self, mat_id: str, state: GameState) -> str:
+        if mat_id in state.novel_compounds:
+            return novel_compound_name(state.novel_compounds[mat_id])
+        return self.materials.name_for(mat_id)
+
     def validate_inputs(
         self,
         material_ids: list[str],
@@ -142,11 +152,11 @@ class LabEngine:
                 errors.append(f"You haven't learned {defn_name} yet — invent or discover it first.")
 
         for mat_id in material_ids:
-            if not self.materials.get(mat_id):
+            if not self._is_known_material(mat_id, state):
                 errors.append(f"Unknown material: {mat_id}")
             elif not self._material_selectable(mat_id, region, state):
                 errors.append(
-                    f"{self.materials.name_for(mat_id)} is not available — "
+                    f"{self._material_name(mat_id, state)} is not available — "
                     "survey, gather, or discover it first."
                 )
         for eid in component_ids + object_ids:
@@ -155,19 +165,95 @@ class LabEngine:
                 errors.append(f"Unknown item: {eid}")
             elif not entity.operational:
                 errors.append(f"{entity.name} is not usable right now.")
+            elif not entity_available_at_lab(entity, region):
+                region_names = {r.id: r.name for r in state.regions}
+                if entity.region_id != region.id:
+                    where = region_names.get(entity.region_id, entity.region_id)
+                    errors.append(
+                        f"{entity.name} is in {where} — travel there with it, "
+                        "or use what's around you."
+                    )
+                else:
+                    errors.append(f"{entity.name} is not reachable from this bench.")
         return errors
 
     def _material_selectable(self, mat_id: str, region: Region, state: GameState) -> bool:
-        if mat_id in state.novel_compounds:
-            return state.material_stocks.get(mat_id, 0.0) > 0.02
-        if mat_id in IMPLICIT_MATERIALS:
+        if self.material_engine:
+            return self.material_engine.is_material_available(mat_id, region, state)
+        stock = state.region_material_stocks.get(region.id, {}).get(mat_id, 0.0)
+        if mat_id in region.absent_materials:
+            return stock > 0.02
+        if mat_id in region.always_available:
             return True
-        if state.material_stocks.get(mat_id, 0.0) > 0.02:
+        if mat_id in state.novel_compounds:
+            return stock > 0.02
+        if stock > 0.02:
             return True
         for deposit in region.deposits:
-            if deposit.material_id == mat_id and deposit.discovered and deposit.abundance > 0.05:
-                return True
+            if deposit.material_id == mat_id and deposit.discovered:
+                if deposit.abundance >= LAB_COST or stock > 0.02:
+                    return True
         return False
+
+    def list_selectable_materials(self, region: Region, state: GameState) -> list[dict]:
+        if self.material_engine:
+            return self.material_engine.list_lab_materials(region, state)
+        return self._legacy_list_selectable_materials(region, state)
+
+    def _legacy_list_selectable_materials(self, region: Region, state: GameState) -> list[dict]:
+        items: list[dict] = []
+        seen: set[str] = set()
+        for mat_id in region.always_available:
+            seen.add(mat_id)
+            items.append(
+                {
+                    "id": mat_id,
+                    "name": self.materials.name_for(mat_id),
+                    "source": "nearby",
+                    "stock": state.material_stocks.get(mat_id, 0.0),
+                }
+            )
+        for deposit in region.deposits:
+            if not deposit.discovered or deposit.material_id in seen:
+                continue
+            seen.add(deposit.material_id)
+            items.append(
+                {
+                    "id": deposit.material_id,
+                    "name": self.materials.name_for(deposit.material_id),
+                    "source": "deposit",
+                    "stock": state.material_stocks.get(deposit.material_id, 0.0),
+                    "abundance": deposit.abundance,
+                }
+            )
+        for compound_id, entry in sorted(state.novel_compounds.items()):
+            if compound_id in seen:
+                continue
+            stock = state.material_stocks.get(compound_id, 0.0)
+            if stock <= 0.02:
+                continue
+            seen.add(compound_id)
+            items.append(
+                {
+                    "id": compound_id,
+                    "name": novel_compound_name(entry),
+                    "source": "discovered",
+                    "stock": stock,
+                }
+            )
+        for mat_id, stock in sorted(state.material_stocks.items()):
+            if mat_id in seen or stock <= 0.02:
+                continue
+            seen.add(mat_id)
+            items.append(
+                {
+                    "id": mat_id,
+                    "name": self.materials.name_for(mat_id),
+                    "source": "carried",
+                    "stock": stock,
+                }
+            )
+        return items
 
     def _count_matching_entities(
         self,
@@ -273,7 +359,7 @@ class LabEngine:
         intent: str = "",
     ) -> dict:
         materials = [
-            {"id": mid, "name": self.materials.name_for(mid)} for mid in material_ids
+            {"id": mid, "name": self._material_name(mid, state)} for mid in material_ids
         ]
         components: list[dict] = []
         objects: list[dict] = []
@@ -321,7 +407,7 @@ class LabEngine:
         state: GameState,
         intent: str,
     ) -> str:
-        mat_names = [self.materials.name_for(m) for m in material_ids]
+        mat_names = [self._material_name(m, state) for m in material_ids]
         names: list[str] = []
         for eid in component_ids + object_ids:
             entity = next((e for e in state.entities if e.id == eid), None)
@@ -350,9 +436,17 @@ class LabEngine:
                 costs[mat_id] = 0.0
                 continue
             cost = LAB_COST
-            stock = state.material_stocks.get(mat_id, 0.0)
+            stock = (
+                self.material_engine.stock_at(state, region.id, mat_id)
+                if self.material_engine
+                else state.region_material_stocks.get(region.id, {}).get(mat_id, 0.0)
+            )
             if stock >= cost:
-                state.material_stocks[mat_id] = stock - cost
+                if self.material_engine:
+                    self.material_engine.set_stock(state, region.id, mat_id, stock - cost)
+                else:
+                    regional = state.region_material_stocks.setdefault(region.id, {})
+                    regional[mat_id] = stock - cost
                 costs[mat_id] = cost
             else:
                 for deposit in region.deposits:
@@ -366,47 +460,7 @@ class LabEngine:
                         break
                 else:
                     costs[mat_id] = 0.0
-            name = self.materials.name_for(mat_id)
+            name = self._material_name(mat_id, state)
             if costs.get(mat_id, 0) > 0:
                 feedback.append(f"Used some {name}.")
         return costs, feedback
-
-    def list_selectable_materials(self, region: Region, state: GameState) -> list[dict]:
-        items: list[dict] = []
-        seen: set[str] = set()
-        for mat_id in sorted(IMPLICIT_MATERIALS):
-            seen.add(mat_id)
-            items.append(
-                {
-                    "id": mat_id,
-                    "name": self.materials.name_for(mat_id),
-                    "source": "scavenging",
-                    "stock": state.material_stocks.get(mat_id, 0.0),
-                }
-            )
-        for deposit in region.deposits:
-            if not deposit.discovered or deposit.material_id in seen:
-                continue
-            seen.add(deposit.material_id)
-            items.append(
-                {
-                    "id": deposit.material_id,
-                    "name": self.materials.name_for(deposit.material_id),
-                    "source": "deposit",
-                    "stock": state.material_stocks.get(deposit.material_id, 0.0),
-                    "abundance": deposit.abundance,
-                }
-            )
-        for compound_id, entry in sorted(state.novel_compounds.items()):
-            if compound_id in seen:
-                continue
-            seen.add(compound_id)
-            items.append(
-                {
-                    "id": compound_id,
-                    "name": novel_compound_name(entry),
-                    "source": "discovered",
-                    "stock": state.material_stocks.get(compound_id, 0.0),
-                }
-            )
-        return items

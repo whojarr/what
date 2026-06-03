@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+from __future__ import annotations
+
 from civsim.models.entity import Entity
+from civsim.models.world import Region
 
 STARTER_COMPONENT_IDS = frozenset({"natural_fire", "natural_spring"})
+
+# Fixed in place — too large or tied to the landscape.
+FIXED_STRUCTURE_TAGS = frozenset(
+    {"structure", "shelter", "house", "dwelling", "wall", "furniture"}
+)
 
 IO_THRESHOLD = 0.25
 
@@ -141,6 +149,8 @@ def _object_composition_hint(entity: Entity, tag_set: set[str], role: str) -> st
         "object.house": "Stone, hide, bone, and flint — walled dwelling",
         "object.furnished_corner": "Seat and table together — a lived-in corner",
         "material.cave_pigment": "Sulfur and manganese — colored dust",
+        "object.carry_pack": "Hide and fiber — lashed pack for hauling between places",
+        "object.woven_basket": "Fiber and wood — a basket for goods on the move",
     }
     if entity.type in by_type:
         return by_type[entity.type]
@@ -236,6 +246,128 @@ def entity_kind(entity: Entity) -> str:
     if is_object(entity):
         return "object"
     return "other"
+
+
+def is_portable(entity: Entity) -> bool:
+    """True when the player can bring this entity when traveling between regions."""
+    if entity.id in STARTER_COMPONENT_IDS or "natural" in entity.tags:
+        return False
+    tag_set = {t.lower() for t in entity.tags}
+    if tag_set & FIXED_STRUCTURE_TAGS:
+        return False
+    caps = entity.capabilities or {}
+    if caps.get("shelter", 0.0) >= 0.55:
+        return False
+    return is_object(entity) or is_component(entity)
+
+
+def lab_accessible_region_ids(region: Region) -> set[str]:
+    """Regions whose fixed fixtures (e.g. cave fire) can be used at this bench."""
+    ids = {region.id}
+    for passage in region.exits:
+        if passage.discovered and passage.accessible:
+            ids.add(passage.target_region_id)
+    return ids
+
+
+def entity_available_at_lab(
+    entity: Entity, region: Region, accessible: set[str] | None = None
+) -> bool:
+    """True when an entity can be used at the lab — here, carried, or a nearby natural fixture."""
+    if not entity.operational:
+        return False
+    reachable = accessible if accessible is not None else lab_accessible_region_ids(region)
+    if entity.region_id == region.id:
+        return True
+    if entity.region_id not in reachable:
+        return False
+    return "natural" in entity.tags
+
+
+def travel_carry_capacity(entities: list[Entity], from_region_id: str) -> int:
+    """How many portable entities can leave a region — packs and baskets add slots."""
+    portables = [
+        e for e in entities if e.region_id == from_region_id and is_portable(e)
+    ]
+    capacity = 1
+    for entity in portables:
+        storage = entity.capabilities.get("storage", 0.0)
+        if storage >= 0.1:
+            capacity += max(1, int(round(storage * 6)))
+    return capacity
+
+
+def partition_for_travel(
+    entities: list[Entity], from_region_id: str
+) -> tuple[list[Entity], list[Entity]]:
+    """Split portables into (carried, left_behind) by carry capacity."""
+    portables = [
+        e for e in entities if e.region_id == from_region_id and is_portable(e)
+    ]
+    capacity = travel_carry_capacity(entities, from_region_id)
+
+    def sort_key(entity: Entity) -> tuple:
+        storage = entity.capabilities.get("storage", 0.0)
+        return (
+            -storage,
+            -entity.capabilities.get("tool_craft", 0.0),
+            0 if is_component(entity) else 1,
+            entity.name.lower(),
+        )
+
+    portables.sort(key=sort_key)
+    return portables[:capacity], portables[capacity:]
+
+
+def material_travel_capacity(entities: list[Entity], from_region_id: str) -> float:
+    """Bulk material volume that can move when traveling — needs a pack or basket."""
+    portables = [
+        e for e in entities if e.region_id == from_region_id and is_portable(e)
+    ]
+    capacity = 0.0
+    for entity in portables:
+        storage = entity.capabilities.get("storage", 0.0)
+        if storage >= 0.1:
+            capacity += storage * 0.85
+    return min(1.0, capacity)
+
+
+def transfer_materials_on_travel(
+    region_stocks: dict[str, dict[str, float]],
+    from_region_id: str,
+    to_region_id: str,
+    to_absent_materials: set[str],
+    entities: list[Entity],
+) -> list[tuple[str, float]]:
+    """Move stored materials between regions up to pack capacity."""
+    capacity = material_travel_capacity(entities, from_region_id)
+    if capacity <= 0.001:
+        return []
+
+    from_stocks = region_stocks.setdefault(from_region_id, {})
+    to_stocks = region_stocks.setdefault(to_region_id, {})
+    if not from_stocks:
+        return []
+
+    moved: list[tuple[str, float]] = []
+    remaining = capacity
+    candidates = [(mid, amt) for mid, amt in from_stocks.items() if amt > 0.01]
+    candidates.sort(key=lambda item: (0 if item[0] in to_absent_materials else 1, -item[1], item[0]))
+
+    for mat_id, amount in candidates:
+        if remaining <= 0.001:
+            break
+        haul = min(amount, remaining)
+        if haul <= 0.001:
+            continue
+        from_stocks[mat_id] = amount - haul
+        if from_stocks[mat_id] <= 0.001:
+            del from_stocks[mat_id]
+        to_stocks[mat_id] = min(1.0, to_stocks.get(mat_id, 0.0) + haul)
+        remaining -= haul
+        moved.append((mat_id, haul))
+
+    return moved
 
 
 def classify_entity_tags(

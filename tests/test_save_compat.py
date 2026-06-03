@@ -41,7 +41,9 @@ def test_legacy_save_loads_without_geology_fields():
         "entity_names": {},
     }
     state = GameState.model_validate(legacy)
+    assert state.name == ""
     assert state.material_stocks == {}
+    assert state.region_material_stocks == {}
     assert state.novel_compounds == {}
     assert state.known_methods == []
     assert state.surveyed_region_ids == []

@@ -46,12 +46,12 @@
     {% set stocks = gathered_stocks %}
     {% set stocks_preview = stocks[:preview_limit] %}
     <a href="#materials-stocks" class="materials-col materials-col-link" data-world-panel="materials-stocks">
-      <h3>Gathered stocks <span class="section-count">{{ stocks | length }}</span></h3>
+      <h3>Materials (In stock) <span class="section-count">{{ stocks | length }}</span></h3>
       <ul class="entity-list">
         {% for s in stocks_preview %}
         <li>{{ s.name }}: {{ "%.0f"|format(s.stock * 100) }}%</li>
         {% else %}
-        <li class="muted">None gathered yet.</li>
+        <li class="muted">Nothing in stock yet.</li>
         {% endfor %}
       </ul>
       {% if stocks | length > preview_limit %}
@@ -88,7 +88,7 @@
     </div>
 
     <div class="materials-col">
-      <h3>Gathered stocks</h3>
+      <h3>Materials (In stock)</h3>
       <ul class="entity-list">
         {% if game.material_stocks %}
         {% set has_stock = namespace(value=false) %}
@@ -99,10 +99,10 @@
         {% endif %}
         {% endfor %}
         {% if not has_stock.value %}
-        <li class="muted">None gathered yet.</li>
+        <li class="muted">Nothing in stock yet.</li>
         {% endif %}
         {% else %}
-        <li class="muted">None gathered yet.</li>
+        <li class="muted">Nothing in stock yet.</li>
         {% endif %}
       </ul>
     </div>

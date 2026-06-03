@@ -69,3 +69,37 @@ def test_material_engine_survey_idempotent(tmp_path):
     assert len(first.discoveries) >= 1
     second = engine.survey_region(state, region)
     assert len(second.discoveries) == 0
+
+
+def test_iron_ore_in_lab_after_survey_matches_world(tmp_path):
+    service = _service(tmp_path)
+    state = service.create_game(seed=42)
+    cave_id = state.regions[0].id
+    service.survey_region(state.id, cave_id)
+
+    lab_ids = {m["id"] for m in service.get_lab_options(state.id, cave_id)["materials"]}
+    world_ids = {
+        m["id"] for m in service.get_world_materials_available(state.id, cave_id)["items"]
+    }
+    assert "iron_oxide" in lab_ids
+    assert "iron_oxide" in world_ids
+
+
+def test_depleted_iron_hidden_from_lab_and_world(tmp_path):
+    service = _service(tmp_path)
+    state = service.create_game(seed=42)
+    cave_id = state.regions[0].id
+    service.survey_region(state.id, cave_id)
+    reloaded = service.load_game(state.id)
+    iron = next(
+        d for d in reloaded.regions[0].deposits if d.material_id == "iron_oxide"
+    )
+    iron.abundance = 0.03
+    service._save(reloaded)
+
+    lab_ids = {m["id"] for m in service.get_lab_options(state.id, cave_id)["materials"]}
+    world_ids = {
+        m["id"] for m in service.get_world_materials_available(state.id, cave_id)["items"]
+    }
+    assert "iron_oxide" not in lab_ids
+    assert "iron_oxide" not in world_ids

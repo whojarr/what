@@ -1,9 +1,22 @@
 (function () {
   const root = document.getElementById("world-root");
-  if (!root || !window.What || !window.WhatDisplay) return;
+  if (!root || !window.What || !window.WhatDisplay || !window.WhatItemDetail) return;
 
   const { esc, pct, capitalize, fmtFixed, setStatus, createClient } = window.What;
   const { componentBadges, objectBadge } = window.WhatDisplay;
+  const {
+    renderCapabilities,
+    renderDetailFields,
+    renderTagPills,
+    healthMeter,
+    roleLabel,
+    renderMaterialDetail,
+    renderStockDetail,
+    renderCompoundDetail,
+    renderAbsentMaterialDetail,
+    renderEntityFullDetail,
+    renderEntityGroupDetail,
+  } = window.WhatItemDetail;
 
   const client = createClient({ root });
   const previewLimit = parseInt(root.dataset.previewLimit, 10) || 8;
@@ -44,12 +57,13 @@
   const PANELS = {
     "materials-absent": { title: "Not here", section: "materialsAbsent" },
     "materials-available": { title: "Available to use", section: "materialsAvailable" },
-    "materials-stocks": { title: "Gathered stocks", section: "materialsStocks" },
+    "materials-stocks": { title: "Materials (In stock)", section: "materialsStocks" },
     components: { title: "Components", section: "components" },
-    objects: { title: "Objects", section: "objects" },
+    objects: { title: "Objects (Learnt)", section: "objects" },
   };
 
   const sectionCache = {};
+  let worldRefreshGen = 0;
 
   function renderStat(name, value) {
     return `
@@ -221,9 +235,10 @@
             ${sectionMore((available.items || []).length)}
           </a>
           <a href="#materials-stocks" class="materials-col materials-col-link" data-world-panel="materials-stocks">
-            <h3>Gathered stocks <span class="section-count">${(stocks.stocks || []).length}</span></h3>
+            <h3>Materials (In stock) <span class="section-count">${(stocks.stocks || []).length}</span></h3>
+            <p class="muted materials-col-lede" title="Bulk supply consumed at Discover.">Bulk supply — consumed at Discover.</p>
             <ul class="entity-list entity-list-compact">${
-              stockItems || '<li class="muted">None gathered yet.</li>'
+              stockItems || '<li class="muted">Nothing in stock yet.</li>'
             }</ul>
             ${sectionMore((stocks.stocks || []).length)}
           </a>
@@ -237,11 +252,11 @@
           )}
           ${renderEntityColumnLink(
             "objects",
-            "Objects",
-            "Furniture, shelters, houses.",
+            "Objects (Learnt)",
+            "Built and kept — inanimate things you made.",
             objects.items,
             "object",
-            "None yet."
+            "None learnt yet."
           )}
         </div>
       </section>`;
@@ -292,58 +307,6 @@
       );
     actionsEl.innerHTML = renderActions(sections.overview);
     hydrateGfx(appEl);
-  }
-
-  function renderCapabilities(caps) {
-    if (!caps || !Object.keys(caps).length) return "";
-    const rows = Object.entries(caps)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(
-        ([key, val]) => `
-        <div class="cap-row">
-          <dt>${esc(key.replace(/_/g, " "))}</dt>
-          <dd><meter value="${esc(val)}" max="1"></meter></dd>
-          <dd>${pct(val)}%</dd>
-        </div>`
-      )
-      .join("");
-    return `<dl class="cap-list">${rows}</dl>`;
-  }
-
-  function renderDetailFields(fields) {
-    const rows = fields
-      .filter((f) => f.value != null && f.value !== "")
-      .map(
-        (f) => `
-        <div class="detail-field">
-          <dt>${esc(f.label)}</dt>
-          <dd>${f.html != null ? f.html : esc(String(f.value))}</dd>
-        </div>`
-      )
-      .join("");
-    return rows ? `<dl class="detail-fields">${rows}</dl>` : "";
-  }
-
-  function renderTagPills(tags) {
-    if (!tags?.length) return "";
-    return `<span class="detail-tags">${tags.map((t) => `<span class="badge">${esc(t)}</span>`).join(" ")}</span>`;
-  }
-
-  function healthMeter(value) {
-    return `<meter value="${esc(value)}" max="1"></meter> ${pct(value)}%`;
-  }
-
-  function roleLabel(display, kind) {
-    if (kind === "component") {
-      if (display.role === "fire") return "Fire source";
-      if (display.role === "water") return "Water source";
-      if (display.kind === "starter") return "Starter machine";
-      return "Machine / tool";
-    }
-    if (display.role === "furniture") return "Furniture";
-    if (display.role === "dwelling") return "Shelter";
-    if (display.role === "material") return "Processed material";
-    return "Object";
   }
 
   function panelListRow(type, id, panelId, mainHtml, meta, item, visualType) {
@@ -438,10 +401,10 @@
       .join("");
 
     return `
-      <p class="muted">Material you have already collected and stored.</p>
+      <p class="muted">Bulk materials in storage — quantities consumed when you experiment at Discover.</p>
       <ul class="panel-item-list">${
         stockRows ||
-        '<li class="muted">None gathered yet — survey, scavenge, or combine materials to build stocks.</li>'
+        '<li class="muted">Nothing in stock yet — survey, scavenge, or combine to build supply.</li>'
       }</ul>
       ${compoundRows ? `<h3>Novel compounds</h3><ul class="panel-item-list">${compoundRows}</ul>` : ""}`;
   }
@@ -477,11 +440,11 @@
     const lede =
       kind === "component"
         ? 'Machines — fire, water, tools. Used at <a href="/lab">Discover</a>.'
-        : "Inanimate things — furniture, shelters, houses. Combine at <a href=\"/lab\">Discover</a>.";
+        : 'Things you built and kept — combine again at <a href="/lab">Discover</a>.';
 
     return `
       <p class="muted">${lede}</p>
-      <ul class="panel-item-list">${rows || `<li class="muted">No ${kind === "component" ? "components" : "objects"} yet.</li>`}</ul>`;
+      <ul class="panel-item-list">${rows || `<li class="muted">No ${kind === "component" ? "components" : "learnt objects"} yet.</li>`}</ul>`;
   }
 
   function renderComponentsList(data) {
@@ -500,219 +463,10 @@
     objects: renderObjectsList,
   };
 
-  function renderEntityFullDetail(item, kind) {
-    const display = item.display || {};
-    const countBadge = item.count > 1 ? `<span class="badge">×${item.count}</span>` : "";
-    const warn =
-      kind === "component"
-        ? item.operational
-          ? ""
-          : '<span class="badge warn">offline</span>'
-        : item.operational
-          ? ""
-          : '<span class="badge warn">broken</span>';
-    const caps = item.active_capabilities || item.capabilities || {};
-    const fields = [
-      { label: "Role", value: roleLabel(display, kind) },
-      { label: "Status", value: item.status_note || (item.operational ? "Working normally." : "Needs attention.") },
-      { label: "Health", html: healthMeter(item.health) },
-      { label: "Location", value: item.region_name || item.region_id },
-      { label: "Type", value: item.type },
-      { label: "Classification", value: item.classification },
-      {
-        label: "Tags",
-        html: renderTagPills(item.tags) || null,
-      },
-    ];
-
-    return `
-      <div class="panel-item-detail">
-        <div class="detail-card">
-          <div class="detail-card-head">
-            ${gSlot(kind, item, { large: true })}
-            <div class="detail-card-head-text">
-              ${kind === "component" ? componentBadges(display) : objectBadge(display.role)}
-              <strong>${esc(display.label || item.name)}</strong>
-              ${countBadge}
-              ${warn}
-            </div>
-          </div>
-          ${display.hint ? `<p class="detail-desc">${esc(display.hint)}</p>` : ""}
-          ${renderDetailFields(fields)}
-          ${Object.keys(caps).length ? `<h4 class="detail-subhead">Capabilities</h4>${renderCapabilities(caps)}` : ""}
-          <p class="detail-footnote muted">Use at <a href="/lab">Discover</a> as a component or ingredient.</p>
-        </div>
-      </div>`;
-  }
-
-  function renderAbsentMaterialDetail(m) {
-    return `
-      <div class="panel-item-detail">
-        <div class="detail-card">
-          <div class="detail-card-head">
-            ${gSlot("material", m, { large: true })}
-            <div class="detail-card-head-text">
-              <strong>${esc(m.name)}</strong>
-              <span class="badge warn">not here</span>
-            </div>
-          </div>
-          <p class="detail-desc">This material is not available in the current region. Survey, travel, or invent substitutes if you need it.</p>
-        </div>
-      </div>`;
-  }
-
-  function renderMaterialDetail(m) {
-    const fields = [
-      {
-        label: "Source",
-        value: m.source === "deposit" ? "Cave deposit" : "Always nearby",
-      },
-      { label: "How to get", value: m.obtain },
-      { label: "Uses", value: m.uses },
-      { label: "Description", value: m.description },
-    ];
-    if (m.source === "deposit") {
-      fields.splice(2, 0, {
-        label: "Abundance",
-        html: `${healthMeter(m.abundance)} · ${capitalize(m.depth)} depth`,
-      });
-    }
-    if (m.substitutes?.length) {
-      fields.push({ label: "Substitutes", value: m.substitutes.join(", ") });
-    }
-    if (m.tags?.length) {
-      fields.push({ label: "Material tags", html: renderTagPills(m.tags) });
-    }
-
-    const badge =
-      m.source === "deposit"
-        ? '<span class="badge">deposit</span>'
-        : `<span class="badge">${esc(m.badge || "nearby")}</span>`;
-
-    return `
-      <div class="panel-item-detail">
-        <div class="detail-card">
-          <div class="detail-card-head">
-            ${gSlot("material", m, { large: true })}
-            <div class="detail-card-head-text"><strong>${esc(m.name)}</strong> ${badge}</div>
-          </div>
-          ${renderDetailFields(fields)}
-          <p class="detail-footnote muted">Select at <a href="/lab">Discover</a> when combining materials.</p>
-        </div>
-      </div>`;
-  }
-
-  function renderStockDetail(s) {
-    const fields = [
-      { label: "Stored amount", html: `${healthMeter(s.stock)} of storage capacity` },
-      { label: "Supply", value: s.storage_note },
-      { label: "Uses", value: s.uses },
-    ];
-    if (s.substitutes?.length) {
-      fields.push({ label: "Substitutes", value: s.substitutes.join(", ") });
-    }
-    if (s.tags?.length) {
-      fields.push({ label: "Material tags", html: renderTagPills(s.tags) });
-    }
-
-    return `
-      <div class="panel-item-detail">
-        <div class="detail-card">
-          <div class="detail-card-head">
-            ${gSlot("stock", s, { large: true })}
-            <div class="detail-card-head-text">
-              <strong>${esc(s.name)}</strong>
-              <span class="badge">${pct(s.stock)}% stored</span>
-            </div>
-          </div>
-          ${renderDetailFields(fields)}
-          <p class="detail-footnote muted">Gathered stock is consumed when you experiment at the bench.</p>
-        </div>
-      </div>`;
-  }
-
-  function renderProvenanceList(label, items) {
-    if (!items?.length) return "";
-    return `
-      <div class="detail-field">
-        <dt>${esc(label)}</dt>
-        <dd>${items.map((i) => `<span class="badge">${esc(i.name)}</span>`).join(" ")}</dd>
-      </div>`;
-  }
-
-  function renderCompoundDetail(c) {
-    const prov = c.provenance || {};
-    const madeFromFields = [];
-    if (c.made_from) {
-      madeFromFields.push({ label: "Made from", value: c.made_from });
-    } else if (c.has_provenance === false) {
-      madeFromFields.push({
-        label: "Made from",
-        value: "Not recorded — discovered before recipe tracking was added.",
-      });
-    }
-    if (prov.intent) {
-      madeFromFields.push({ label: "Intent", value: prov.intent });
-    }
-    if (prov.turn != null) {
-      madeFromFields.push({ label: "Discovered", value: `Turn ${prov.turn}` });
-    }
-    if (prov.recipe_id) {
-      madeFromFields.push({ label: "Recipe", value: prov.recipe_id });
-    }
-
-    const inputLists =
-      renderProvenanceList("Materials", prov.materials) +
-      renderProvenanceList("Components", prov.components) +
-      renderProvenanceList("Objects", prov.objects) +
-      renderProvenanceList("Methods", prov.methods);
-
-    return `
-      <div class="panel-item-detail">
-        <div class="detail-card">
-          <div class="detail-card-head">
-            ${gSlot("compound", c, { large: true })}
-            <div class="detail-card-head-text">
-              <strong>${esc(c.name)}</strong>
-              <span class="badge">compound</span>
-            </div>
-          </div>
-          ${renderDetailFields([
-            ...madeFromFields,
-            { label: "Origin", value: prov.source === "invent" ? "Invention" : "Discovery bench experiment" },
-            { label: "Description", value: c.description },
-            { label: "Uses", value: c.uses },
-            { label: "Compound id", value: c.id },
-          ])}
-          ${inputLists ? `<dl class="detail-fields">${inputLists}</dl>` : ""}
-        </div>
-      </div>`;
-  }
-
-  function renderEntityGroupDetail(item, kind) {
-    const instances = (item.instance_ids || [item.id])
-      .map(
-        (id, i) => `
-        <li>
-          <button type="button" class="panel-instance-row"
-                  data-world-item="entity" data-item-id="${esc(id)}" data-world-panel="${esc(panelState.panelId)}">
-            Instance ${i + 1} · health ${pct(item.health)}% · ${esc(id.slice(0, 8))}…
-          </button>
-        </li>`
-      )
-      .join("");
-
-    return `
-      ${renderEntityFullDetail(item, kind)}
-      <h3 class="detail-subhead">${item.count} identical instances</h3>
-      <p class="muted">Each instance can be inspected separately — useful when health or status differs.</p>
-      <ul class="panel-instance-list">${instances}</ul>`;
-  }
-
   function findCachedItem(itemRef) {
     const config = PANELS[itemRef.panelId];
     if (!config) return null;
-    const data = sectionCache[config.section];
+    const data = sectionCache[sectionCacheKey(config.section)];
     if (!data) return null;
 
     if (itemRef.type === "material" || itemRef.type === "absent") {
@@ -753,7 +507,7 @@
     if (itemRef.type === "entity-group") {
       const item = findCachedItem(itemRef);
       return item
-        ? renderEntityGroupDetail(item, kind)
+        ? renderEntityGroupDetail(item, kind, panelState.panelId, false)
         : '<p class="error">Item not found.</p>';
     }
     if (itemRef.type === "entity") {
@@ -849,15 +603,20 @@
     Object.keys(sectionCache).forEach((key) => delete sectionCache[key]);
   }
 
+  function sectionCacheKey(key) {
+    return `${client.getRegionId() || "_"}:${key}`;
+  }
+
   async function fetchSection(key, forceRefresh) {
-    if (!forceRefresh && sectionCache[key]) return sectionCache[key];
+    const cacheKey = sectionCacheKey(key);
+    if (!forceRefresh && sectionCache[cacheKey]) return sectionCache[cacheKey];
     const fetcher = SECTIONS[key];
     if (!fetcher) throw new Error(`Unknown section: ${key}`);
     const data = await fetcher();
-    if (key === "overview" && data?.region?.id) {
-      client.setRegionId(data.region.id);
+    if (key === "overview" && data?.region?.id && !client.getRegionId()) {
+      client.setRegionId(data.region.id, { notify: false });
     }
-    sectionCache[key] = data;
+    sectionCache[cacheKey] = data;
     return data;
   }
 
@@ -966,7 +725,9 @@
   }
 
   async function refreshWorld(forceRefresh) {
+    const gen = ++worldRefreshGen;
     const sections = await fetchAllSections(forceRefresh);
+    if (gen !== worldRefreshGen) return null;
     renderWorldPage(sections);
     if (panel.classList.contains("is-open") && panelState.panelId) {
       await renderPanelContent();
@@ -995,7 +756,7 @@
     document.body.classList.add("is-waiting");
     try {
       const result = await client.travelTo(targetRegionId, fromRegionId);
-      client.setRegionId(result.region_id);
+      client.setRegionId(result.region_id, { notify: false });
       invalidateSections();
       await refreshWorld(true);
       renderFeedback(
@@ -1118,6 +879,14 @@
     if (event.key === "Escape" && panel.classList.contains("is-open")) {
       closePanel();
     }
+  });
+
+  document.addEventListener("what-region-change", () => {
+    invalidateSections();
+    appEl.innerHTML = '<p class="muted world-panel-loading">Loading region…</p>';
+    refreshWorld(true).catch(() => {
+      appEl.innerHTML = '<p class="error">Could not load this region.</p>';
+    });
   });
 
   async function init() {

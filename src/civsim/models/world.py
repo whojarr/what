@@ -112,6 +112,7 @@ class GameState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
+    name: str = ""
     turn: int = 0
     rng_seed: int = 42
     era: str = DEFAULT_ERA
@@ -124,13 +125,14 @@ class GameState(BaseModel):
     event_log: list[GameEvent] = Field(default_factory=list)
     entity_names: dict[str, str] = Field(default_factory=dict)
     material_stocks: dict[str, float] = Field(default_factory=dict)
+    region_material_stocks: dict[str, dict[str, float]] = Field(default_factory=dict)
     novel_compounds: dict[str, NovelCompound] = Field(default_factory=dict)
     surveyed_region_ids: list[str] = Field(default_factory=list)
     known_methods: list[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
-    def _migrate_legacy_novel_compounds(cls, data: Any) -> Any:
+    def _migrate_legacy_state(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
         nc = data.get("novel_compounds")
@@ -142,4 +144,15 @@ class GameState(BaseModel):
                 else:
                     migrated[cid] = val
             data = {**data, "novel_compounds": migrated}
+        if data.get("name") is None:
+            data = {**data, "name": ""}
+        legacy_stocks = data.get("material_stocks")
+        regional = data.get("region_material_stocks")
+        if legacy_stocks and not regional:
+            regions = data.get("regions") or []
+            region_id = regions[0]["id"] if regions else "cave_chamber"
+            data = {
+                **data,
+                "region_material_stocks": {region_id: dict(legacy_stocks)},
+            }
         return data

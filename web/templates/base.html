@@ -4,12 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}WHAT{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body{% if game_id %} data-game-id="{{ game_id }}" data-api-base="{{ api_base }}"{% endif %}>
   <header>
     <h1><a href="{{ url_for('home') }}">WHAT</a></h1>
     <nav>
+      {% if game_id %}
+      <label class="region-control">
+        <span class="region-control-label">Region</span>
+        <select id="global-region-select" aria-label="Current region">
+          <option value="">Loading…</option>
+        </select>
+      </label>
+      {% endif %}
       <label class="graphics-control">
         <span class="graphics-control-label">Graphics</span>
         <select id="graphics-level" aria-label="Graphics level">
@@ -17,7 +26,7 @@
           <option value="1">AI images</option>
         </select>
       </label>
-      {% if session.get('game_id') %}
+      {% if game_id %}
       <a href="{{ url_for('world') }}">Cave</a>
       <a href="{{ url_for('lab') }}">Discover</a>
       <a href="{{ url_for('invent') }}">Invent</a>
@@ -30,6 +39,9 @@
   </main>
   <div id="status-bar" class="status-bar" aria-live="polite"></div>
   <script src="{{ url_for('static', filename='api.js') }}"></script>
+  {% if game_id %}
+  <script src="{{ url_for('static', filename='region-selector.js') }}"></script>
+  {% endif %}
   <script src="{{ url_for('static', filename='graphics.js') }}"></script>
   <script src="{{ url_for('static', filename='display.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>

@@ -55,13 +55,13 @@
 
     const stockCol = linkPanels
       ? `<a href="/world#materials-stocks" class="materials-col materials-col-link">
-          <h3>Gathered stocks <span class="section-count">${stockCount}</span></h3>
-          <ul class="entity-list">${stockItems || '<li class="muted">None gathered yet.</li>'}</ul>
+          <h3>Materials (In stock) <span class="section-count">${stockCount}</span></h3>
+          <ul class="entity-list">${stockItems || '<li class="muted">Nothing in stock yet.</li>'}</ul>
           ${sectionMore(stockCount, previewLimit)}
         </a>`
       : `<div class="materials-col">
-          <h3>Gathered stocks <span class="section-count">${stockCount}</span></h3>
-          <ul class="entity-list">${stockItems || '<li class="muted">None gathered yet.</li>'}</ul>
+          <h3>Materials (In stock) <span class="section-count">${stockCount}</span></h3>
+          <ul class="entity-list">${stockItems || '<li class="muted">Nothing in stock yet.</li>'}</ul>
         </div>`;
 
     return `

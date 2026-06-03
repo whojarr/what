@@ -84,6 +84,30 @@ def test_list_games_includes_saves(client):
         assert "saved_at" in g
 
 
+def test_create_game_accepts_world_name(client):
+    r = client.post("/games", json={"seed": 12, "name": "  Misty Hollow  "})
+    assert r.status_code == 200
+    game = r.json()
+    assert game["name"] == "Misty Hollow"
+    listed = client.get("/games")
+    row = next(g for g in listed.json()["games"] if g["id"] == game["id"])
+    assert row["name"] == "Misty Hollow"
+
+
+def test_delete_game_removes_save(client):
+    created = client.post("/games", json={"seed": 4})
+    assert created.status_code == 200
+    game_id = created.json()["id"]
+    deleted = client.delete(f"/games/{game_id}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"ok": True}
+    listed = client.get("/games")
+    ids = {g["id"] for g in listed.json()["games"]}
+    assert game_id not in ids
+    assert client.get(f"/games/{game_id}").status_code == 404
+    assert client.delete(f"/games/{game_id}").status_code == 404
+
+
 def test_create_and_get_game(client):
     r = client.post("/games", json={"seed": 7})
     assert r.status_code == 200
@@ -242,6 +266,192 @@ def test_travel_to_outside(client):
     assert "clay" in avail_ids
 
 
+def test_travel_carries_portable_items(client):
+    import api.main as api_module
+    from civsim.models.entity import Entity
+
+    r = client.post("/games", json={"seed": 11})
+    game_id = r.json()["id"]
+    cave_id = r.json()["regions"][0]["id"]
+    outside_id = r.json()["regions"][1]["id"]
+
+    state = api_module.game_service.load_game(game_id)
+    state.entities.append(
+        Entity(
+            id="portable_hide",
+            name="Softened hide",
+            type="object.soft_hide",
+            tags=["object", "hide"],
+            capabilities={"shelter": 0.3},
+            region_id=cave_id,
+        )
+    )
+    api_module.game_service._save(state)
+
+    client.post(f"/games/{game_id}/regions/{cave_id}/survey")
+    travel = client.post(
+        f"/games/{game_id}/travel",
+        json={"target_region_id": outside_id, "from_region_id": cave_id},
+    )
+    assert travel.status_code == 200
+    body = travel.json()
+    assert "Softened hide" in body["carried"]
+    assert any("Softened hide" in f for f in body["feedback"])
+
+    outside_objects = client.get(
+        f"/games/{game_id}/world/objects",
+        params={"region_id": outside_id},
+    )
+    names = {i["name"] for i in outside_objects.json()["items"]}
+    assert "Softened hide" in names
+
+    cave_components = client.get(
+        f"/games/{game_id}/world/components",
+        params={"region_id": cave_id},
+    )
+    comp_ids = {i["id"] for i in cave_components.json()["items"]}
+    assert "natural_fire" in comp_ids
+    assert "natural_spring" in comp_ids
+
+
+def test_travel_leaves_excess_without_pack(client):
+    import api.main as api_module
+    from civsim.models.entity import Entity
+
+    r = client.post("/games", json={"seed": 11})
+    game_id = r.json()["id"]
+    cave_id = r.json()["regions"][0]["id"]
+    outside_id = r.json()["regions"][1]["id"]
+
+    state = api_module.game_service.load_game(game_id)
+    state.entities.extend(
+        [
+            Entity(
+                id="tool_a",
+                name="Knapped flint",
+                type="tool.flint_knapped",
+                tags=["component", "flint"],
+                capabilities={"tool_craft": 0.65},
+                region_id=cave_id,
+            ),
+            Entity(
+                id="tool_b",
+                name="Bone needle",
+                type="tool.bone_needle",
+                tags=["component", "bone"],
+                capabilities={"tool_craft": 0.55},
+                region_id=cave_id,
+            ),
+        ]
+    )
+    api_module.game_service._save(state)
+
+    client.post(f"/games/{game_id}/regions/{cave_id}/survey")
+    travel = client.post(
+        f"/games/{game_id}/travel",
+        json={"target_region_id": outside_id, "from_region_id": cave_id},
+    )
+    assert travel.status_code == 200
+    body = travel.json()
+    assert len(body["carried"]) == 1
+    assert len(body["left_behind"]) == 1
+
+    outside_components = client.get(
+        f"/games/{game_id}/world/components",
+        params={"region_id": outside_id},
+    )
+    names = {i["name"] for i in outside_components.json()["items"]}
+    assert len(names & {"Knapped flint", "Bone needle"}) == 1
+
+
+def test_travel_carried_materials_show_in_lab(client):
+    import api.main as api_module
+    from civsim.models.entity import Entity
+
+    r = client.post("/games", json={"seed": 11})
+    game_id = r.json()["id"]
+    cave_id = r.json()["regions"][0]["id"]
+    outside_id = r.json()["regions"][1]["id"]
+
+    state = api_module.game_service.load_game(game_id)
+    state.region_material_stocks[cave_id] = {"flint": 0.5}
+    state.entities.append(
+        Entity(
+            id="carry_pack",
+            name="Hide carry pack",
+            type="object.carry_pack",
+            tags=["object", "hide"],
+            capabilities={"storage": 0.35},
+            region_id=cave_id,
+        )
+    )
+    api_module.game_service._save(state)
+
+    client.post(f"/games/{game_id}/regions/{cave_id}/survey")
+    client.post(
+        f"/games/{game_id}/travel",
+        json={"target_region_id": outside_id, "from_region_id": cave_id},
+    )
+
+    lab = client.get(
+        f"/games/{game_id}/lab/options",
+        params={"region_id": outside_id},
+    )
+    mat_ids = {m["id"] for m in lab.json()["materials"]}
+    assert "flint" in mat_ids
+    assert "wood" in mat_ids
+    assert "clay" in mat_ids
+    assert "bone" not in mat_ids
+    assert "hide" not in mat_ids
+    flint = next(m for m in lab.json()["materials"] if m["id"] == "flint")
+    assert flint["source"] == "hauled"
+
+
+def test_travel_materials_stay_without_pack(client):
+    import api.main as api_module
+
+    r = client.post("/games", json={"seed": 11})
+    game_id = r.json()["id"]
+    cave_id = r.json()["regions"][0]["id"]
+    outside_id = r.json()["regions"][1]["id"]
+
+    state = api_module.game_service.load_game(game_id)
+    state.region_material_stocks[cave_id] = {"flint": 0.5}
+    api_module.game_service._save(state)
+
+    client.post(f"/games/{game_id}/regions/{cave_id}/survey")
+    travel = client.post(
+        f"/games/{game_id}/travel",
+        json={"target_region_id": outside_id, "from_region_id": cave_id},
+    )
+    assert travel.status_code == 200
+    assert "flint" not in (travel.json().get("materials_hauled") or [])
+    assert any("stay behind" in f.lower() for f in travel.json()["feedback"])
+
+    lab = client.get(
+        f"/games/{game_id}/lab/options",
+        params={"region_id": outside_id},
+    )
+    mat_ids = {m["id"] for m in lab.json()["materials"]}
+    assert "flint" not in mat_ids
+
+
+def test_lab_materials_match_cave_region(client):
+    r = client.post("/games", json={"seed": 11})
+    game_id = r.json()["id"]
+    cave_id = r.json()["regions"][0]["id"]
+
+    lab = client.get(
+        f"/games/{game_id}/lab/options",
+        params={"region_id": cave_id},
+    )
+    mat_ids = {m["id"] for m in lab.json()["materials"]}
+    assert "bone" in mat_ids
+    assert "hide" in mat_ids
+    assert "flint" in mat_ids
+    assert "wood" not in mat_ids
+
+
 def test_get_entity_api(client):
     r = client.post("/games", json={"seed": 3})
     game_id = r.json()["id"]
@@ -267,6 +477,7 @@ def test_compound_provenance_in_stocks(client):
         "Cement Shovel",
         ["compound", "chemical"],
         "material.cement_shovel",
+        region_id=state.regions[0].id,
         provenance=api_module.game_service._build_compound_provenance(
             state,
             source="lab",
