@@ -115,9 +115,18 @@ def history():
     game_id, redirect_resp = _game_id_or_redirect()
     if redirect_resp:
         return redirect_resp
+    q = (request.args.get("q") or "").strip()
+    target = url_for("settings")
+    if q:
+        target = f"{target}?q={q}"
+    return redirect(f"{target}#history")
+
+
+@app.route("/settings")
+def settings():
     return render_template(
-        "history.html",
-        game_id=game_id,
+        "settings.html",
+        game_id=session.get("game_id"),
         api_base=API_BASE,
     )
 

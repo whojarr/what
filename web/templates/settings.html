@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Settings — WHAT{% endblock %}
+{% block content %}
+<div id="settings-root"
+     data-api-base="{{ api_base }}"
+     {% if game_id %}data-game-id="{{ game_id }}"{% endif %}>
+  <section class="panel">
+    <h2>Display</h2>
+    <p class="muted">Choose how the world is rendered. Changing this reloads the page.</p>
+    <div class="settings-field">
+      <label for="settings-graphics-level">Graphics</label>
+      <select id="settings-graphics-level" class="graphics-level-select" aria-label="Graphics level">
+        <option value="0">Text</option>
+        <option value="1">AI images</option>
+        <option value="2">Basic 3D (beta)</option>
+      </select>
+      <p class="settings-hint muted">Text is fastest. AI images add thumbnails where available. Basic 3D shows a panoramic cave view on the Cave page.</p>
+    </div>
+  </section>
+
+  {% if game_id %}
+  <section class="panel" id="settings-current-panel">
+    <h2>Current journey</h2>
+    <form id="settings-rename-world-form" class="settings-rename-form">
+      <div class="settings-field">
+        <label for="settings-world-name">World name</label>
+        <div class="rename-form">
+          <input type="text" id="settings-world-name" name="name" maxlength="80" class="name-input" required autocomplete="off">
+          <button type="submit">Save</button>
+        </div>
+      </div>
+    </form>
+    <p id="settings-current-meta" class="muted">Loading…</p>
+    <div class="settings-actions">
+      <button type="button" id="settings-leave-journey">Leave journey</button>
+    </div>
+    <p class="settings-hint muted">Your save stays on this device. You can continue later from Saved journeys or the start page.</p>
+  </section>
+
+  <section class="panel" id="history">
+    <h2>Memory search</h2>
+    <form id="settings-history-search-form" class="settings-history-search">
+      <input type="text" name="q" placeholder="Search past ideas and events">
+      <button type="submit">Search</button>
+    </form>
+    <ul id="settings-history-records" class="settings-history-list"><li class="muted">Loading…</li></ul>
+  </section>
+
+  <section class="panel">
+    <h2>Event log</h2>
+    <ul id="settings-history-events" class="settings-history-list"><li class="muted">Loading…</li></ul>
+  </section>
+  {% endif %}
+
+  <section class="panel">
+    <h2>Saved journeys</h2>
+    <p class="muted">Continue or delete worlds stored on the server.</p>
+    <ul id="settings-saves-list" class="save-list"><li class="muted">Loading…</li></ul>
+    <p id="settings-saves-empty" class="muted" hidden>No saved journeys yet.</p>
+  </section>
+
+  <p id="settings-error" class="error" hidden></p>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='settings.js') }}"></script>
+{% endblock %}

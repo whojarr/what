@@ -54,7 +54,7 @@ def test_visual_endpoint_serves_cached_image(client, tmp_path, monkeypatch):
     )
     png_path.write_bytes(png_bytes)
 
-    def fake_get_or_create(gid, subject_type, subject_id):
+    def fake_get_or_create(gid, subject_type, subject_id, **kwargs):
         subject = api_module.game_service.resolve_visual_subject(gid, subject_type, subject_id)
         assert subject is not None
         return png_path
@@ -92,6 +92,20 @@ def test_create_game_accepts_world_name(client):
     listed = client.get("/games")
     row = next(g for g in listed.json()["games"] if g["id"] == game["id"])
     assert row["name"] == "Misty Hollow"
+
+
+def test_rename_game_updates_world_name(client):
+    created = client.post("/games", json={"seed": 9, "name": "Old Name"})
+    assert created.status_code == 200
+    game_id = created.json()["id"]
+    renamed = client.post(f"/games/{game_id}/name", json={"name": "  New Hollow  "})
+    assert renamed.status_code == 200
+    assert renamed.json() == {"id": game_id, "name": "New Hollow"}
+    loaded = client.get(f"/games/{game_id}")
+    assert loaded.json()["name"] == "New Hollow"
+    listed = client.get("/games")
+    row = next(g for g in listed.json()["games"] if g["id"] == game_id)
+    assert row["name"] == "New Hollow"
 
 
 def test_delete_game_removes_save(client):
@@ -221,6 +235,89 @@ def test_world_section_apis(client):
     objects = client.get(f"/games/{game_id}/world/objects")
     assert objects.status_code == 200
     assert "items" in objects.json()
+
+
+def test_world_scene_api(client):
+    r = client.post("/games", json={"seed": 7})
+    game_id = r.json()["id"]
+    region_id = r.json()["regions"][0]["id"]
+
+    scene = client.get(f"/games/{game_id}/world/scene")
+    assert scene.status_code == 200
+    body = scene.json()
+    assert body["region"]["id"] == region_id
+    assert body["template_id"] == "cave_enclosure"
+    assert body["template_version"] >= 25
+    assert body.get("scene_mode") == "single_scene"
+    assert body["surfaces"] == []
+    assert set(body.get("panorama_crops", {})) == {"back", "left", "right", "floor"}
+    slot_ids = {e["id"] for e in body["slot_entities"]}
+    assert "natural_fire" in slot_ids
+    assert "natural_spring" in slot_ids
+
+
+def test_world_scene_image(client, tmp_path, monkeypatch):
+    import api.main as api_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    r = client.post("/games", json={"seed": 7})
+    game_id = r.json()["id"]
+    region_id = r.json()["regions"][0]["id"]
+
+    master = tmp_path / "master.png"
+    master.write_bytes(_mini_png_with_regions())
+    api_module.visual_service.get_or_create_panorama_master = lambda *args, **kwargs: master
+
+    resp = client.get(f"/games/{game_id}/world/scene/image?region_id={region_id}")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert len(resp.content) > 50
+
+
+def test_world_scene_panorama_surface(client, tmp_path, monkeypatch):
+    import api.main as api_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    r = client.post("/games", json={"seed": 7})
+    game_id = r.json()["id"]
+    region_id = r.json()["regions"][0]["id"]
+
+    master = tmp_path / "master.png"
+    master.write_bytes(_mini_png_with_regions())
+
+    def fake_master(gid, template_id, rid):
+        return master
+
+    def fake_crop(gid, template_id, rid, surface_id):
+        from civsim.services.scene_panorama import crop_normalized, load_png, png_bytes
+
+        crops = api_module.scene_registry.panorama_crops(template_id)
+        img = load_png(master.read_bytes())
+        cropped = crop_normalized(img, crops[surface_id])
+        out = tmp_path / f"{surface_id}.png"
+        out.write_bytes(png_bytes(cropped))
+        return out
+
+    api_module.visual_service.get_or_create_panorama_master = fake_master
+    api_module.visual_service.get_scene_panorama_surface = fake_crop
+
+    resp = client.get(
+        f"/games/{game_id}/world/scene/panorama/left?region_id={region_id}"
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert len(resp.content) > 50
+
+
+def _mini_png_with_regions():
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.new("RGB", (900, 600), (100, 90, 70))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def test_survey_discovers_passage(client):

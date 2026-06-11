@@ -32,9 +32,41 @@
     gfx().hydrate(node || document, { apiBase: client.apiBase, gameId: client.gameId });
   }
 
+  async function waitForBasic3d(maxMs = 3000) {
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      if (window.WhatBasic3D) return window.WhatBasic3D;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return null;
+  }
+
+  async function syncBasic3d(sections) {
+    const wrap = document.getElementById("world-scene-wrap");
+    const host = wrap?.querySelector(".world-scene-host");
+    if (!wrap || !host) return;
+    if (!gfx()?.isBasic3d()) {
+      wrap.hidden = true;
+      window.WhatBasic3D?.dispose();
+      host.innerHTML = "";
+      return;
+    }
+    const basic3d = await waitForBasic3d();
+    if (!basic3d) return;
+    wrap.hidden = false;
+    host.innerHTML = "";
+    const regionId = sections.overview?.region?.id || client.getRegionId();
+    await basic3d.mount(wrap, {
+      apiBase: client.apiBase,
+      gameId: client.gameId,
+      regionId,
+    });
+  }
+
   const appEl = document.getElementById("world-app");
   const actionsEl = document.getElementById("world-actions");
   const feedbackEl = document.getElementById("world-feedback");
+  const headerBar = document.getElementById("world-header-bar");
   const panel = document.getElementById("world-side-panel");
   const backdrop = panel.querySelector(".world-side-panel-backdrop");
   const closeBtn = panel.querySelector(".world-side-panel-close");
@@ -64,6 +96,29 @@
 
   const sectionCache = {};
   let worldRefreshGen = 0;
+  let lastSections = null;
+
+  function isWorldInteractionTarget(node) {
+    if (!node) return false;
+    return root.contains(node) || headerBar?.contains(node);
+  }
+
+  function clearHeaderBar() {
+    if (!headerBar) return;
+    headerBar.hidden = true;
+    headerBar.innerHTML = "";
+  }
+
+  function mountHeaderBar(overview) {
+    if (!headerBar || !gfx()?.isBasic3d()) {
+      clearHeaderBar();
+      return false;
+    }
+    headerBar.hidden = false;
+    headerBar.innerHTML = renderHeader(overview, { variant: "bar" });
+    hydrateGfx(headerBar);
+    return true;
+  }
 
   function renderStat(name, value) {
     return `
@@ -79,20 +134,26 @@
     return "";
   }
 
-  function renderHeader(overview) {
+  function renderHeader(overview, options = {}) {
     const region = overview.region || {};
     const res = overview.resources || {};
-    return `
-      <section class="panel world-header">
-        <div class="world-top-row">
+    const regionName = region.name || "The cave";
+    const biomeMeta = (region.biome_tags || []).join(", ");
+    const isBar = options.variant === "bar";
+    const topRowClass = isBar ? "world-top-row world-top-row-bar" : "world-top-row";
+    const wrapOpen = isBar
+      ? `<div class="world-header-bar-content"><div class="${topRowClass}">`
+      : `<section class="panel world-header"><div class="${topRowClass}">`;
+    const wrapClose = isBar ? `</div></div>` : `</div></section>`;
+    const sceneSlot =
+      gfx()?.isAi() && region.id
+        ? `<span class="world-scene-slot" data-region-id="${esc(region.id)}" data-region-name="${esc(regionName)}" aria-hidden="true"></span>`
+        : "";
+    return `${wrapOpen}
           <div class="world-name">
-            <h2>${esc(region.name || "The cave")}</h2>
-            <form class="rename-form" data-action="rename">
-              <input type="hidden" name="region_id" value="${esc(region.id)}">
-              <input type="text" name="name" value="${esc(region.name)}" class="name-input">
-              <button type="submit" class="small">Rename</button>
-            </form>
-            <p class="meta">${esc((region.biome_tags || []).join(", "))}</p>
+            <h2>${esc(regionName)}</h2>
+            <p class="meta">${esc(biomeMeta)}</p>
+            ${sceneSlot}
           </div>
           <div class="world-turn">
             <h2>Turn ${esc(overview.turn)} · ${esc(capitalize(overview.era))}</h2>
@@ -105,29 +166,63 @@
               ${renderStat("Knowledge", res.knowledge)}
             </div>
           </div>
-          <div class="world-paths">${renderExitsBlock(overview)}</div>
-        </div>
-      </section>`;
+          <div class="world-paths">${renderExitsBlock(overview, isBar ? { variant: "bar" } : {})}</div>
+        ${wrapClose}`;
   }
 
-  function renderExitsBlock(overview) {
+  function regionPathSlot(regionById, targetRegionId, fallbackName) {
+    const region = regionById[targetRegionId] || {
+      id: targetRegionId,
+      name: fallbackName || targetRegionId,
+    };
+    return gSlot("region", region, { pathPreview: true });
+  }
+
+  function renderExitsBlock(overview, options = {}) {
     const exits = overview.exits || [];
     const hidden = exits.filter((e) => e.status === "hidden");
     const found = exits.filter((e) => e.status === "found");
     const open = exits.filter((e) => e.status === "open");
     const regionId = overview.region?.id || "";
+    const regionById = Object.fromEntries((overview.regions || []).map((r) => [r.id, r]));
+    const isBar = options.variant === "bar";
 
     if (!exits.length) {
-      return `
+      return isBar
+        ? `<p class="muted exit-bar-empty">No paths yet</p>`
+        : `
         <h2>Paths</h2>
         <p class="muted">No exits known from here yet.</p>`;
+    }
+
+    if (isBar) {
+      const travelRows = [...open, ...found]
+        .map(
+          (e) => `
+        <li class="exit-row exit-row-bar ${e.status === "found" ? "exit-found" : "exit-open"}">
+          ${regionPathSlot(regionById, e.target_region_id, e.target_region_name)}
+          <span class="exit-bar-label">${esc(e.name)} <span class="muted">→ ${esc(e.target_region_name)}</span></span>
+          <button type="button" class="button small${e.status === "found" ? " primary" : ""}" data-action="travel"
+                  data-target-region="${esc(e.target_region_id)}"
+                  data-from-region="${esc(regionId)}">
+            ${e.status === "found" ? "Venture out" : "Go"}
+          </button>
+        </li>`
+        )
+        .join("");
+      const hiddenHint =
+        hidden.length && !found.length && !open.length
+          ? `<p class="muted exit-bar-empty">Survey to find a way out</p>`
+          : "";
+      return `${hiddenHint}<ul class="exit-list exit-list-bar">${travelRows}</ul>`;
     }
 
     const openRows = open
       .map(
         (e) => `
         <li class="exit-row exit-open">
-          <div>
+          ${regionPathSlot(regionById, e.target_region_id, e.target_region_name)}
+          <div class="exit-row-body">
             <strong>${esc(e.name)}</strong>
             <span class="muted"> → ${esc(e.target_region_name)}</span>
             <p class="muted exit-desc">${esc(e.description)}</p>
@@ -145,7 +240,8 @@
       .map(
         (e) => `
         <li class="exit-row exit-found">
-          <div>
+          ${regionPathSlot(regionById, e.target_region_id, e.target_region_name)}
+          <div class="exit-row-body">
             <strong>${esc(e.name)}</strong>
             <span class="muted"> → ${esc(e.target_region_name)}</span>
             <p class="muted exit-desc">${esc(e.description)}</p>
@@ -293,10 +389,17 @@
       <button type="button" class="button" data-action="tick">Advance turn</button>`;
   }
 
-  function renderWorldPage(sections) {
+  async function renderWorldPage(sections) {
     const regionId = sections.overview?.region?.id || "";
+    const region = sections.overview?.region || {};
+    const gfxCtx = { apiBase: client.apiBase, gameId: client.gameId };
+    const useSceneImage = region.id && (gfx()?.isAi() || gfx()?.isBasic3d());
+    const sceneReady = useSceneImage
+      ? gfx().ensureSceneImage(gfxCtx, region.id, region.name).catch(() => null)
+      : null;
+    const headerInBar = mountHeaderBar(sections.overview);
     appEl.innerHTML =
-      renderHeader(sections.overview) +
+      (headerInBar ? "" : renderHeader(sections.overview)) +
       renderMaterialsPanel(
         sections.materialsAbsent,
         sections.materialsAvailable,
@@ -307,6 +410,8 @@
       );
     actionsEl.innerHTML = renderActions(sections.overview);
     hydrateGfx(appEl);
+    if (sceneReady) await sceneReady;
+    await syncBasic3d(sections);
   }
 
   function panelListRow(type, id, panelId, mainHtml, meta, item, visualType) {
@@ -728,27 +833,12 @@
     const gen = ++worldRefreshGen;
     const sections = await fetchAllSections(forceRefresh);
     if (gen !== worldRefreshGen) return null;
+    lastSections = sections;
     renderWorldPage(sections);
     if (panel.classList.contains("is-open") && panelState.panelId) {
       await renderPanelContent();
     }
     return sections;
-  }
-
-  async function handleRename(form) {
-    const regionId = form.querySelector('[name="region_id"]').value;
-    const name = form.querySelector('[name="name"]').value.trim();
-    if (!name) return;
-    setStatus("Saving…");
-    try {
-      await client.renameRegion(regionId, name);
-      invalidateSections();
-      await refreshWorld(true);
-      setStatus("Saved");
-      window.setTimeout(() => setStatus(""), 2000);
-    } catch (_err) {
-      setStatus("Could not save name");
-    }
   }
 
   async function handleTravel(targetRegionId, fromRegionId) {
@@ -757,6 +847,8 @@
     try {
       const result = await client.travelTo(targetRegionId, fromRegionId);
       client.setRegionId(result.region_id, { notify: false });
+      const regionSelect = document.getElementById("global-region-select");
+      if (regionSelect) regionSelect.value = result.region_id;
       invalidateSections();
       await refreshWorld(true);
       renderFeedback(
@@ -807,6 +899,8 @@
   }
 
   root.addEventListener("click", (event) => {
+    if (!isWorldInteractionTarget(event.target)) return;
+
     const previewItem = event.target.closest("[data-world-preview]");
     if (previewItem) {
       event.preventDefault();
@@ -865,13 +959,6 @@
     }
   });
 
-  root.addEventListener("submit", (event) => {
-    const form = event.target.closest('[data-action="rename"]');
-    if (!form) return;
-    event.preventDefault();
-    handleRename(form);
-  });
-
   closeBtn.addEventListener("click", closePanel);
   backdrop.addEventListener("click", closePanel);
 
@@ -883,10 +970,15 @@
 
   document.addEventListener("what-region-change", () => {
     invalidateSections();
+    clearHeaderBar();
     appEl.innerHTML = '<p class="muted world-panel-loading">Loading region…</p>';
     refreshWorld(true).catch(() => {
       appEl.innerHTML = '<p class="error">Could not load this region.</p>';
     });
+  });
+
+  window.addEventListener("what-graphics-change", () => {
+    if (lastSections) renderWorldPage(lastSections);
   });
 
   async function init() {

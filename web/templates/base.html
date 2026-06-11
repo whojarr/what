@@ -7,9 +7,12 @@
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body{% if game_id %} data-game-id="{{ game_id }}" data-api-base="{{ api_base }}"{% endif %}>
+<body class="{% block body_class %}{% endblock %}"{% if game_id %} data-game-id="{{ game_id }}" data-api-base="{{ api_base }}"{% endif %}>
   <header>
-    <h1><a href="{{ url_for('home') }}">WHAT</a></h1>
+    <div class="header-start">
+      <h1><a href="{{ url_for('home') }}">WHAT</a></h1>
+      {% block header_extra %}{% endblock %}
+    </div>
     <nav>
       {% if game_id %}
       <label class="region-control">
@@ -21,17 +24,18 @@
       {% endif %}
       <label class="graphics-control">
         <span class="graphics-control-label">Graphics</span>
-        <select id="graphics-level" aria-label="Graphics level">
+        <select id="graphics-level" class="graphics-level-select" aria-label="Graphics level">
           <option value="0">Text</option>
           <option value="1">AI images</option>
+          <option value="2">Basic 3D (beta)</option>
         </select>
       </label>
       {% if game_id %}
       <a href="{{ url_for('world') }}">Cave</a>
       <a href="{{ url_for('lab') }}">Discover</a>
       <a href="{{ url_for('invent') }}">Invent</a>
-      <a href="{{ url_for('history') }}">History</a>
       {% endif %}
+      <a href="{{ url_for('settings') }}">Settings</a>
     </nav>
   </header>
   <main class="{% block main_class %}{% endblock %}">

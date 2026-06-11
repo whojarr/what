@@ -49,6 +49,7 @@ from civsim.models.world import (
 from civsim.registry.capability_registry import CapabilityRegistry
 from civsim.registry.material_registry import MaterialRegistry
 from civsim.registry.method_registry import MethodRegistry
+from civsim.registry.scene_registry import SceneRegistry
 from civsim.world.generator import WorldGenerator
 
 
@@ -83,8 +84,30 @@ class GameService:
         self.simulation = SimulationEngine(registry, self.event_system, self.material_engine)
         self.world_gen = WorldGenerator()
         self._interpreter: OpenAIInterpreter | None = None
+        if self.data_dir:
+            self.scene_registry = SceneRegistry.load_for_era(DEFAULT_ERA, self.data_dir)
+            scenes_path = self.data_dir / f"scenes_{DEFAULT_ERA}.yaml"
+            try:
+                self._scenes_mtime = scenes_path.stat().st_mtime
+            except OSError:
+                self._scenes_mtime = None
+        else:
+            self.scene_registry = SceneRegistry(1, {"default": {}})
+            self._scenes_mtime = None
 
-    def _get_interpreter(self) -> OpenAIInterpreter:
+    def ensure_scene_registry(self) -> None:
+        """Reload scene templates when scenes YAML changes (dev-friendly)."""
+        if not self.data_dir:
+            return
+        path = self.data_dir / f"scenes_{DEFAULT_ERA}.yaml"
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return
+        if self._scenes_mtime is not None and mtime == self._scenes_mtime:
+            return
+        self.scene_registry = SceneRegistry.load_for_era(DEFAULT_ERA, self.data_dir)
+        self._scenes_mtime = mtime
         if self._interpreter is None:
             self._interpreter = OpenAIInterpreter()
         return self._interpreter
@@ -192,6 +215,17 @@ class GameService:
                 "hint": display.get("hint") or "",
                 "era": era,
             }
+        if st == "region":
+            region = next((r for r in state.regions if r.id == subject_id), None)
+            if not region:
+                return None
+            return {
+                "type": "region",
+                "id": region.id,
+                "name": region.name,
+                "hint": ", ".join(region.biome_tags) or "Paleolithic landscape.",
+                "era": era,
+            }
         return None
 
     def _save(self, state: GameState) -> None:
@@ -207,6 +241,14 @@ class GameService:
             if region.id == region_id:
                 region.name = name
                 break
+        self._save(state)
+        return state
+
+    def rename_game(self, game_id: str, name: str) -> GameState | None:
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        state.name = self.normalize_world_name(name)
         self._save(state)
         return state
 
@@ -1150,6 +1192,213 @@ class GameService:
             "regions": [self._region_public(r) for r in state.regions],
             "exits": self._exits_public(state, region),
         }
+
+    def get_world_scene(self, game_id: str, region_id: str | None = None) -> dict | None:
+        self.ensure_scene_registry()
+        state = self.load_game(game_id)
+        if not state:
+            return None
+        region = self._world_region(state, region_id)
+        if not region:
+            return None
+        template_id, template = self.scene_registry.resolve(region.id, region.biome_tags)
+        components = self.get_world_components(game_id, region.id) or {"items": []}
+        objects = self.get_world_objects(game_id, region.id) or {"items": []}
+        slot_entities = self._bind_scene_slot_entities(template, components, objects)
+        exits = self._exits_public(state, region)
+        panorama_crops: dict[str, dict[str, float]] = {}
+        if (template.get("assets") or {}).get("panorama"):
+            scene_mode = self.scene_registry.panorama_mode(template_id)
+            if scene_mode == "single_scene":
+                surfaces = []
+                panorama_crops = self.scene_registry.panorama_crops(template_id)
+            else:
+                surfaces = self._scene_surfaces_panorama(
+                    template_id, template, region
+                )
+        else:
+            scene_mode = "legacy"
+            surfaces = self._scene_surfaces(template_id, template, region, exits)
+        return {
+            "game_id": state.id,
+            "template_id": template_id,
+            "template_version": self.scene_registry.version,
+            "scene_mode": scene_mode,
+            "region": self._region_public(region),
+            "camera": template.get("camera") or {},
+            "environment": template.get("environment") or {},
+            "slots": template.get("slots") or {},
+            "exit_layout": template.get("exits") or {},
+            "slot_entities": slot_entities,
+            "exits": exits,
+            "surfaces": surfaces,
+            "panorama_crops": panorama_crops,
+        }
+
+    def _exit_target_region_id(
+        self, exits: list[dict] | None, region: Region
+    ) -> str | None:
+        if exits:
+            for status in ("open", "found"):
+                for passage in exits:
+                    if passage.get("status") == status:
+                        target = passage.get("target_region_id")
+                        if target:
+                            return target
+        if region.exits:
+            return region.exits[0].target_region_id
+        return None
+
+    def _scene_surfaces_panorama(
+        self, template_id: str, template: dict, region: Region
+    ) -> list[dict]:
+        env = template.get("environment") or {}
+        layouts = env.get("surfaces") or []
+        wall_crops = self.scene_registry.panorama_wall_crops(template_id)
+        hint = ", ".join(region.biome_tags) or "Paleolithic landscape."
+        has_fixed_floor = bool(
+            self.scene_registry.panorama_floor_prompt(template_id, region.name, hint)
+        )
+        template_version = self.scene_registry.version
+        result: list[dict] = []
+        for layout in layouts:
+            surface_id = layout.get("id")
+            if not surface_id:
+                continue
+            if surface_id == "floor" and has_fixed_floor:
+                result.append(
+                    {
+                        "id": "floor",
+                        "panorama": False,
+                        "visual_type": "region",
+                        "visual_id": region.id,
+                        "params": {
+                            "context": "scene",
+                            "template_id": template_id,
+                            "surface": "floor",
+                            "region_id": region.id,
+                            "template_version": template_version,
+                        },
+                    }
+                )
+                continue
+            if surface_id not in wall_crops:
+                continue
+            result.append(
+                {
+                    "id": surface_id,
+                    "panorama": True,
+                    "params": {
+                        "template_id": template_id,
+                        "region_id": region.id,
+                        "surface": surface_id,
+                        "template_version": template_version,
+                    },
+                }
+            )
+        return result
+
+    def _scene_surfaces(
+        self,
+        template_id: str,
+        template: dict,
+        region: Region,
+        exits: list[dict] | None = None,
+    ) -> list[dict]:
+        region_id = region.id
+        env = template.get("environment") or {}
+        layouts = env.get("surfaces") or []
+        asset_surfaces = (template.get("assets") or {}).get("surfaces") or {}
+        backdrop = (template.get("assets") or {}).get("backdrop")
+        if not layouts and backdrop:
+            layouts = [{"id": "back", "size": [12, 5], "position": [0, 2.5, -4], "rotation": [0, 0, 0]}]
+        result: list[dict] = []
+        for layout in layouts:
+            surface_id = layout.get("id")
+            if not surface_id:
+                continue
+            spec = asset_surfaces.get(surface_id)
+            if not spec and surface_id == "back" and backdrop:
+                spec = backdrop
+            if not spec:
+                continue
+            standard_visual = bool(spec.get("standard_visual"))
+            source = spec.get("source")
+            if source == "exit_target":
+                visual_id = self._exit_target_region_id(exits, region) or region_id
+                standard_visual = True
+            else:
+                visual_id = region_id
+            if not standard_visual and not spec.get("prompt"):
+                continue
+            derived_from = spec.get("derived_from")
+            entry: dict = {
+                "id": surface_id,
+                "size": layout.get("size") or [10, 5],
+                "position": layout.get("position") or [0, 0, 0],
+                "rotation": layout.get("rotation") or [0, 0, 0],
+                "visual_type": "region",
+                "visual_id": visual_id,
+                "standard_visual": standard_visual,
+            }
+            if derived_from:
+                entry["derived_from"] = derived_from
+            if standard_visual:
+                entry["params"] = {"region_id": region_id}
+            else:
+                params: dict = {
+                    "context": "scene",
+                    "template_id": template_id,
+                    "surface": surface_id,
+                    "region_id": region_id,
+                }
+                if derived_from:
+                    params["derived_from"] = derived_from
+                entry["params"] = params
+            result.append(entry)
+        return result
+
+    def _bind_scene_slot_entities(
+        self, template: dict, components: dict, objects: dict
+    ) -> list[dict]:
+        slots = template.get("slots") or {}
+        comp_items = components.get("items") or []
+        obj_items = objects.get("items") or []
+        bound: list[dict] = []
+        for slot_name, slot_def in slots.items():
+            bind = slot_def.get("bind") or {}
+            kind = bind.get("kind")
+            role = bind.get("role")
+            pool: list[dict] = []
+            if kind == "component":
+                pool = comp_items
+            elif kind == "object":
+                pool = obj_items
+            else:
+                pool = comp_items + obj_items
+            match = None
+            for item in pool:
+                display = item.get("display") or {}
+                item_role = display.get("role") or item.get("role")
+                if role and item_role == role:
+                    match = item
+                    break
+            if not match:
+                continue
+            entity_kind = kind
+            if not entity_kind:
+                entity_kind = "component" if match in comp_items else "object"
+            bound.append(
+                {
+                    "slot": slot_name,
+                    "id": match["id"],
+                    "name": match["name"],
+                    "kind": entity_kind,
+                    "primitive": slot_def.get("primitive") or "default",
+                    "position": slot_def.get("position") or [0, 0, 0],
+                }
+            )
+        return bound
 
     def get_world_materials_absent(self, game_id: str, region_id: str | None = None) -> dict | None:
         state = self.load_game(game_id)

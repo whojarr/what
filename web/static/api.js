@@ -216,6 +216,10 @@
         return apiPost(apiBase, `/games/${gid()}/regions/${regionId}/name`, { name });
       },
 
+      renameGame(name) {
+        return apiPost(apiBase, `/games/${gid()}/name`, { name });
+      },
+
       travelTo(targetRegionId, fromRegionId) {
         return apiPost(apiBase, `/games/${gid()}/travel`, {
           target_region_id: targetRegionId,

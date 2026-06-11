@@ -1,0 +1,153 @@
+# Scene templates for Basic 3D (beta). Bump version when prompts or layout change.
+version: 25
+
+templates:
+  cave_enclosure:
+    match:
+      region_ids: [cave_chamber]
+      biome_tags_any: [cave]
+    camera:
+      position: [0, 1.5, 6.8]
+      look_at: [0, 0.85, -2.2]
+      fov: 56
+    environment:
+      mesh: cave_shell
+      room:
+        width: 10
+        depth: 7
+        height: 5
+      fog:
+        color: "#1a2332"
+        near: 2
+        far: 14
+      ambient: 0.35
+      background: "#0f1419"
+      surfaces:
+        - id: back
+        - id: left
+        - id: right
+        - id: floor
+    assets:
+      panorama:
+        mode: single_scene
+        canvas: { width: 1536, height: 1024 }
+        expand_prompt: >
+          Expand this into a wide-angle panoramic paleolithic cave interior. Preserve
+          the seeded exit passage exactly — same image, colours, lighting, and detail;
+          do not obscure, fade, or replace it. That opening is the clear visual cue
+          to {exit_name} ({exit_hint}): a readable gap on the far back wall with daylight
+          and outside visible through it — modest and distant, not frame-filling. Camera
+          pulled back inside a spacious chamber; not a tight tunnel zoomed into the exit.
+          Expansive rocky floor in the foreground and midground with open space left and
+          right for fire and water. Cave walls and ceiling recede on both sides; depth
+          leads to the small back-wall exit. {name}. {hint}. No borders, grid lines, or
+          panel dividers. Muted earthy tones, no text, no people.
+        source_opening: { x: 0.468, y: 0.19, w: 0.055, h: 0.095 }
+        crops:
+          left: { x: 0, y: 0.04, w: 0.22, h: 0.56 }
+          back: { x: 0.22, y: 0, w: 0.56, h: 0.52 }
+          right: { x: 0.78, y: 0.04, w: 0.22, h: 0.56 }
+          floor: { x: 0, y: 0.48, w: 1, h: 0.52 }
+    slots:
+      fire:
+        bind: { kind: component, role: fire }
+        position: [-1.4, 0.12, 1.1]
+        primitive: ember_glow
+      water:
+        bind: { kind: component, role: water }
+        position: [1.1, 0, 0.5]
+        primitive: pool
+    exits:
+      mesh: passage_arch
+      wall: back
+      position: [3.1, -0.15]
+
+  open_slope:
+    match:
+      region_ids: [outside_slope]
+      biome_tags_any: [grassland, exposed]
+    camera:
+      position: [0, 2, 5.5]
+      look_at: [0, 0.4, -0.5]
+      fov: 52
+    environment:
+      mesh: open_ground
+      fog:
+        color: "#8b9cb3"
+        near: 4
+        far: 22
+      ambient: 0.55
+      background: "#6a7d8f"
+      surfaces:
+        - id: back
+          size: [14, 5]
+          position: [0, 2.5, -4]
+          rotation: [0, 0, 0]
+        - id: left
+          size: [8, 5]
+          position: [-7, 2.5, -1]
+          rotation: [0, 75, 0]
+        - id: right
+          size: [8, 5]
+          position: [7, 2.5, -1]
+          rotation: [0, -75, 0]
+        - id: ground
+          size: [16, 16]
+          position: [0, 0.01, 0]
+          rotation: [-90, 0, 0]
+    assets:
+      surfaces:
+        back:
+          prompt: >
+            Distant paleolithic grassland horizon: {name}. {hint}
+            Wide sky and hills, wind-swept, painterly, muted earth tones,
+            no text, no people.
+        left:
+          prompt: >
+            Left view of open paleolithic slope: {name}. {hint}
+            Grass, wind, exposed hillside, painterly, no text, no people.
+        right:
+          prompt: >
+            Right view of open paleolithic slope: {name}. {hint}
+            Grass, wind, exposed hillside, painterly, no text, no people.
+        ground:
+          prompt: >
+            Grassland ground on a paleolithic slope: {name}. {hint}
+            Low angle turf and soil, painterly, muted greens and browns,
+            no text, no people.
+    slots: {}
+    exits:
+      mesh: cave_mouth
+      position: [-2.4, 0, 0.8]
+
+  default:
+    match: {}
+    camera:
+      position: [0, 1.8, 5]
+      look_at: [0, 0.5, 0]
+      fov: 50
+    environment:
+      mesh: open_ground
+      ambient: 0.45
+      background: "#1a2332"
+      surfaces:
+        - id: back
+          size: [12, 5]
+          position: [0, 2.5, -4]
+          rotation: [0, 0, 0]
+        - id: ground
+          size: [14, 14]
+          position: [0, 0.01, 0]
+          rotation: [-90, 0, 0]
+    assets:
+      surfaces:
+        back:
+          prompt: >
+            Paleolithic region vista: {name}. {hint}
+            Wide landscape, painterly, no text, no people.
+        ground:
+          prompt: >
+            Ground of a paleolithic region: {name}. {hint}
+            Earth and vegetation, painterly, no text, no people.
+    slots: {}
+    exits: {}

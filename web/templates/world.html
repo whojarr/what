@@ -1,16 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Cave — WHAT{% endblock %}
+{% block body_class %}page-world{% endblock %}
 {% block main_class %}main-wide{% endblock %}
+{% block header_extra %}
+<div id="world-header-bar" class="world-header-bar" hidden></div>
+{% endblock %}
 {% block content %}
 <div id="world-root"
      data-api-base="{{ api_base }}"
      data-game-id="{{ game_id }}"
      data-preview-limit="{{ preview_limit }}">
-  <div id="world-feedback"></div>
-  <div id="world-app" class="world-page-grid">
-    <p class="muted world-panel-loading">Loading cave…</p>
+  <div class="world-layout">
+    <div id="world-scene-wrap" class="world-scene-wrap" hidden>
+      <div class="world-scene-host"></div>
+      <p class="world-scene-status muted" aria-live="polite"></p>
+    </div>
+    <div class="world-layout-main">
+      <div id="world-feedback"></div>
+      <div id="world-app" class="world-page-grid">
+        <p class="muted world-panel-loading">Loading cave…</p>
+      </div>
+      <div id="world-actions" class="actions"></div>
+    </div>
   </div>
-  <div id="world-actions" class="actions"></div>
 
   <div id="world-side-panel" class="world-side-panel" aria-hidden="true">
     <div class="world-side-panel-backdrop"></div>
@@ -28,6 +40,14 @@
 </div>
 {% endblock %}
 {% block page_scripts %}
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module" src="{{ url_for('static', filename='basic3d.js') }}"></script>
 <script src="{{ url_for('static', filename='item-detail.js') }}"></script>
 <script src="{{ url_for('static', filename='side-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='world.js') }}"></script>

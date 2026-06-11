@@ -67,7 +67,8 @@
       form.id === "lab-form" ||
       form.id === "invent-form" ||
       form.id === "home-form" ||
-      form.id === "history-search-form" ||
+      form.id === "settings-rename-world-form" ||
+      form.id === "settings-history-search-form" ||
       form.closest("#world-root") ||
       form.closest("#invent-root")
     ) {

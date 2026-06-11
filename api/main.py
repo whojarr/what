@@ -7,11 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+_SCENE_IMAGE_HEADERS = {"Cache-Control": "no-store"}
+
 from civsim.models.entity import EntityDraft
 from civsim.paths import project_root, resolve_data_path
 from civsim.registry.capability_registry import CapabilityRegistry
 from civsim.registry.material_registry import MaterialRegistry
 from civsim.registry.method_registry import MethodRegistry
+from civsim.registry.scene_registry import SceneRegistry
 from civsim.services.game_service import GameService
 from civsim.services.visual_service import VisualService
 
@@ -31,7 +34,8 @@ game_service = GameService(
     method_registry=method_registry,
     data_dir=DATA_DIR,
 )
-visual_service = VisualService(IMAGES_PATH, game_service)
+scene_registry = SceneRegistry.load_for_era("paleolithic", DATA_DIR)
+visual_service = VisualService(IMAGES_PATH, game_service, scene_registry=scene_registry)
 
 
 @asynccontextmanager
@@ -124,10 +128,26 @@ def delete_game(game_id: str):
 
 
 @app.get("/games/{game_id}/visuals/{subject_type}/{subject_id}")
-def get_visual(game_id: str, subject_type: str, subject_id: str):
+def get_visual(
+    game_id: str,
+    subject_type: str,
+    subject_id: str,
+    context: str | None = None,
+    template_id: str | None = None,
+    surface: str | None = None,
+    region_id: str | None = None,
+):
     if not game_service.load_game(game_id):
         raise HTTPException(404, "Game not found")
-    path = visual_service.get_or_create_image(game_id, subject_type, subject_id)
+    path = visual_service.get_or_create_image(
+        game_id,
+        subject_type,
+        subject_id,
+        context=context,
+        template_id=template_id,
+        surface=surface,
+        region_id=region_id,
+    )
     if not path:
         if not os.environ.get("OPENAI_API_KEY"):
             raise HTTPException(
@@ -135,7 +155,7 @@ def get_visual(game_id: str, subject_type: str, subject_id: str):
                 "OPENAI_API_KEY is required for AI graphics. Set it in .env or use Text graphics.",
             )
         raise HTTPException(404, "Visual not found")
-    return FileResponse(path, media_type="image/png")
+    return FileResponse(path, media_type="image/png", headers=_SCENE_IMAGE_HEADERS)
 
 
 @app.get("/games/{game_id}")
@@ -152,6 +172,60 @@ def world_overview(game_id: str, region_id: str | None = None):
     if not result:
         raise HTTPException(404, "Game or region not found")
     return result
+
+
+@app.get("/games/{game_id}/world/scene")
+def world_scene(game_id: str, region_id: str | None = None):
+    result = game_service.get_world_scene(game_id, region_id)
+    if not result:
+        raise HTTPException(404, "Game or region not found")
+    return result
+
+
+@app.get("/games/{game_id}/world/scene/image")
+def world_scene_image(game_id: str, region_id: str | None = None):
+    if not game_service.load_game(game_id):
+        raise HTTPException(404, "Game not found")
+    state = game_service.load_game(game_id)
+    region = game_service._world_region(state, region_id)
+    if not region:
+        raise HTTPException(404, "Region not found")
+    template_id, _template = scene_registry.resolve(region.id, region.biome_tags)
+    path = visual_service.get_or_create_panorama_master(
+        game_id, template_id, region.id
+    )
+    if not path:
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise HTTPException(
+                503,
+                "OPENAI_API_KEY is required for AI graphics. Set it in .env or use Text graphics.",
+            )
+        raise HTTPException(404, "Scene image not found")
+    return FileResponse(path, media_type="image/png", headers=_SCENE_IMAGE_HEADERS)
+
+
+@app.get("/games/{game_id}/world/scene/panorama/{surface_id}")
+def world_scene_panorama_surface(
+    game_id: str, surface_id: str, region_id: str | None = None
+):
+    if not game_service.load_game(game_id):
+        raise HTTPException(404, "Game not found")
+    state = game_service.load_game(game_id)
+    region = game_service._world_region(state, region_id)
+    if not region:
+        raise HTTPException(404, "Region not found")
+    template_id, _template = scene_registry.resolve(region.id, region.biome_tags)
+    path = visual_service.get_scene_panorama_surface(
+        game_id, template_id, region.id, surface_id
+    )
+    if not path:
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise HTTPException(
+                503,
+                "OPENAI_API_KEY is required for AI graphics. Set it in .env or use Text graphics.",
+            )
+        raise HTTPException(404, "Scene surface not found")
+    return FileResponse(path, media_type="image/png", headers=_SCENE_IMAGE_HEADERS)
 
 
 @app.get("/games/{game_id}/world/materials/absent")
@@ -220,6 +294,14 @@ def rename_region(game_id: str, region_id: str, req: RenameRegionRequest):
     if not state:
         raise HTTPException(404, "Game or region not found")
     return {"region_id": region_id, "name": req.name}
+
+
+@app.post("/games/{game_id}/name")
+def rename_game(game_id: str, req: RenameRegionRequest):
+    state = game_service.rename_game(game_id, req.name)
+    if not state:
+        raise HTTPException(404, "Game not found")
+    return {"id": game_id, "name": state.name}
 
 
 @app.post("/ideas/interpret")

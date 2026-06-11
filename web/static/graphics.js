@@ -2,15 +2,20 @@
   const STORAGE_KEY = "what_graphics_level";
   const LEVEL_TEXT = 0;
   const LEVEL_AI = 1;
+  const LEVEL_BASIC3D = 2;
 
   function getGraphicsLevel() {
     const raw = localStorage.getItem(STORAGE_KEY);
     const n = parseInt(raw, 10);
-    return n === LEVEL_AI ? LEVEL_AI : LEVEL_TEXT;
+    if (n === LEVEL_AI) return LEVEL_AI;
+    if (n === LEVEL_BASIC3D) return LEVEL_BASIC3D;
+    return LEVEL_TEXT;
   }
 
   function setGraphicsLevel(level) {
-    const n = level === LEVEL_AI ? LEVEL_AI : LEVEL_TEXT;
+    let n = LEVEL_TEXT;
+    if (level === LEVEL_AI) n = LEVEL_AI;
+    else if (level === LEVEL_BASIC3D) n = LEVEL_BASIC3D;
     localStorage.setItem(STORAGE_KEY, String(n));
     applyGraphicsLevel(n);
     window.dispatchEvent(new CustomEvent("what-graphics-change", { detail: { level: n } }));
@@ -23,6 +28,10 @@
 
   function isAi() {
     return getGraphicsLevel() === LEVEL_AI;
+  }
+
+  function isBasic3d() {
+    return getGraphicsLevel() === LEVEL_BASIC3D;
   }
 
   function descriptor(subjectType, item, extra) {
@@ -50,20 +59,111 @@
   }
 
   function slotHtml(desc, options) {
-    if (!isAi() || !desc?.id || !desc?.type) return "";
+    const pathPreview = Boolean(options?.pathPreview);
+    if (!desc?.id || !desc?.type) return "";
+    if (!isAi() && !(isBasic3d() && pathPreview)) return "";
+    if (isBasic3d() && !pathPreview) return "";
     const { esc } = window.What;
-    const large = options?.large ? " visual-slot-large" : "";
-    return `<span class="visual-slot${large}" data-visual-type="${esc(desc.type)}" data-visual-id="${esc(desc.id)}" data-visual-name="${esc(desc.name)}" aria-hidden="true"></span>`;
+    let sizeClass = "";
+    if (pathPreview) sizeClass = " visual-slot-path";
+    else if (options?.large) sizeClass = " visual-slot-large";
+    return `<span class="visual-slot${sizeClass}" data-visual-type="${esc(desc.type)}" data-visual-id="${esc(desc.id)}" data-visual-name="${esc(desc.name)}" aria-hidden="true"></span>`;
   }
 
   function visualUrl(apiBase, gameId, desc) {
     return `${apiBase.replace(/\/$/, "")}/games/${gameId}/visuals/${encodeURIComponent(desc.type)}/${encodeURIComponent(desc.id)}`;
   }
 
-  function hydrate(root, ctx) {
+  function sceneImageUrl(apiBase, gameId, regionId, templateVersion) {
+    const base = apiBase.replace(/\/$/, "");
+    const params = new URLSearchParams();
+    if (regionId) params.set("region_id", regionId);
+    if (templateVersion != null) params.set("v", String(templateVersion));
+    const qs = params.toString();
+    return `${base}/games/${gameId}/world/scene/image${qs ? `?${qs}` : ""}`;
+  }
+
+  const sceneImageCache = new Map();
+
+  function sceneCacheKey(ctx, regionId, templateVersion) {
+    return `${ctx.gameId}:${regionId || ""}:${templateVersion ?? ""}`;
+  }
+
+  async function fetchSceneData(ctx, regionId) {
+    const regionQuery = regionId ? `?region_id=${encodeURIComponent(regionId)}` : "";
+    const res = await fetch(
+      `${ctx.apiBase.replace(/\/$/, "")}/games/${ctx.gameId}/world/scene${regionQuery}`
+    );
+    if (!res.ok) throw new Error(`scene ${res.status}`);
+    return res.json();
+  }
+
+  async function ensureSceneImage(ctx, regionId, regionName) {
+    const sceneData = await fetchSceneData(ctx, regionId);
+    const name = regionName || sceneData.region?.name || "Cave";
+    const url = sceneImageUrl(ctx.apiBase, ctx.gameId, regionId, sceneData.template_version);
+    const key = sceneCacheKey(ctx, regionId, sceneData.template_version);
+    let pending = sceneImageCache.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("scene image failed");
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        try {
+          const img = await new Promise((resolve, reject) => {
+            const el = new Image();
+            el.alt = `${name} — cave scene`;
+            el.onload = () => resolve(el);
+            el.onerror = () => reject(new Error("scene image failed"));
+            el.src = objectUrl;
+          });
+          return { sceneData, url, img, objectUrl };
+        } catch (err) {
+          URL.revokeObjectURL(objectUrl);
+          throw err;
+        }
+      })();
+      sceneImageCache.set(key, pending);
+      pending.catch(() => sceneImageCache.delete(key));
+    }
+    return pending;
+  }
+
+  function sceneImageElement(entry, className) {
+    const img = entry.img.cloneNode(false);
+    img.className = className;
+    return img;
+  }
+
+  async function loadSceneThumb(slot, ctx, regionId, regionName) {
+    try {
+      const entry = await ensureSceneImage(ctx, regionId, regionName);
+      const img = sceneImageElement(entry, "world-scene-thumb");
+      img.onerror = () => slot.remove();
+      slot.appendChild(img);
+    } catch (_err) {
+      slot.remove();
+    }
+  }
+
+  function hydrateSceneSlots(root, ctx) {
     if (!isAi() || !ctx?.apiBase || !ctx?.gameId) return;
     const scope = root || document;
+    scope.querySelectorAll(".world-scene-slot:not([data-scene-hydrated])").forEach((slot) => {
+      slot.dataset.sceneHydrated = "1";
+      const regionId = slot.dataset.regionId || "";
+      const regionName = slot.dataset.regionName || "Cave";
+      void loadSceneThumb(slot, ctx, regionId, regionName);
+    });
+  }
+
+  function hydrate(root, ctx) {
+    if (!ctx?.apiBase || !ctx?.gameId) return;
+    const scope = root || document;
     scope.querySelectorAll(".visual-slot:not([data-visual-hydrated])").forEach((slot) => {
+      const isPath = slot.classList.contains("visual-slot-path");
+      if (!isAi() && !(isBasic3d() && isPath)) return;
       slot.dataset.visualHydrated = "1";
       const desc = {
         type: slot.dataset.visualType,
@@ -71,9 +171,13 @@
         name: slot.dataset.visualName || "",
       };
       const img = document.createElement("img");
-      img.className = slot.classList.contains("visual-slot-large")
-        ? "visual-thumb visual-thumb-large"
-        : "visual-thumb";
+      if (slot.classList.contains("visual-slot-path")) {
+        img.className = "visual-thumb visual-thumb-path";
+      } else if (slot.classList.contains("visual-slot-large")) {
+        img.className = "visual-thumb visual-thumb-large";
+      } else {
+        img.className = "visual-thumb";
+      }
       img.alt = desc.name;
       img.loading = "lazy";
       img.decoding = "async";
@@ -83,14 +187,25 @@
       };
       slot.replaceWith(img);
     });
+    hydrateSceneSlots(scope, ctx);
+  }
+
+  function syncToggleSelects(level) {
+    const value = String(level ?? getGraphicsLevel());
+    document.querySelectorAll(".graphics-level-select").forEach((select) => {
+      select.value = value;
+    });
   }
 
   function initToggle() {
-    const select = document.getElementById("graphics-level");
-    if (!select) return;
-    select.value = String(getGraphicsLevel());
-    select.addEventListener("change", () => {
-      setGraphicsLevel(parseInt(select.value, 10));
+    syncToggleSelects(getGraphicsLevel());
+    document.querySelectorAll(".graphics-level-select").forEach((select) => {
+      select.addEventListener("change", () => {
+        setGraphicsLevel(parseInt(select.value, 10));
+      });
+    });
+    window.addEventListener("what-graphics-change", (event) => {
+      syncToggleSelects(event.detail?.level);
     });
   }
 
@@ -100,12 +215,18 @@
   window.WhatGraphics = {
     LEVEL_TEXT,
     LEVEL_AI,
+    LEVEL_BASIC3D,
     getGraphicsLevel,
     setGraphicsLevel,
     isAi,
+    isBasic3d,
     descriptor,
     slotHtml,
     visualUrl,
+    sceneImageUrl,
+    ensureSceneImage,
+    sceneImageElement,
+    hydrateSceneSlots,
     hydrate,
   };
 })();
